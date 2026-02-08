@@ -1,18 +1,14 @@
 {
-  description = "Terraform configuration for theor.net";
+  description = "Terraform infrastructure for theor.net";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = { nixpkgs, ... }:
     let
-      forAllSystems = nixpkgs.lib.genAttrs [
-        "x86_64-linux"
-        "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
-      ];
+      inherit (nixpkgs) lib;
+      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
     in
     {
       devShells = forAllSystems (system:
@@ -24,13 +20,14 @@
         in
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              terraform
-              sops
-              age
-              just
+            packages = [
+              pkgs.terraform
+              pkgs.sops
+              pkgs.age
+              pkgs.just
             ];
           };
-        });
+        }
+      );
     };
 }
