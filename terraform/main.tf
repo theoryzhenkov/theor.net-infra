@@ -89,15 +89,6 @@ resource "porkbun_dns_record" "theor_net_cue" {
   priority = 0
 }
 
-resource "porkbun_dns_record" "theor_net_talk" {
-  domain   = "theor.net"
-  name     = "talk"
-  type     = "A"
-  content  = hcloud_primary_ip.web_ipv4.ip_address
-  ttl      = 600
-  priority = 0
-}
-
 resource "porkbun_dns_record" "theor_net_leaves_wildcard" {
   domain   = "theor.net"
   name     = "*.leaves"
