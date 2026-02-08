@@ -6,18 +6,19 @@
     image = "ghcr.io/theoryzhenkov/cue/cue:latest";
     containerPort = 3000;
     hostPort = 8080;
-    domain = "cue.the-o.space";
+    domain = "cue.theor.net";
   };
   do-what-you-cant = {
     image = "local/do-what-you-cant:latest";
     containerPort = 8080;
     hostPort = 8127;
-    domain = "do-what-you-cant.leaves.the-o.space";
+    domain = "do-what-you-cant.leaves.theor.net";
   };
   the-o-space = {
     image = "ghcr.io/theoryzhenkov/the-o.space/the-o-space:latest";
     containerPort = 80;
     hostPort = 3000;
-    domain = "the-o.space";
+    domain = "theor.net";
+    default = true;
   };
 }

@@ -40,7 +40,7 @@
         }
       );
 
-      nixosConfigurations.theor-net-web = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.hetzner-theor-net-web-1 = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
@@ -51,14 +51,14 @@
         ];
       };
 
-      deploy.nodes.theor-net-web = {
-        hostname = "theor-net-web";
+      deploy.nodes.hetzner-theor-net-web-1 = {
+        hostname = "hetzner-theor.net-web-1";
         sshUser = "root";
         sshOpts = [ "-A" ];
         profiles.system = {
           user = "root";
           path = deploy-rs.lib.x86_64-linux.activate.nixos
-            self.nixosConfigurations.theor-net-web;
+            self.nixosConfigurations.hetzner-theor-net-web-1;
         };
       };
     };

@@ -1,4 +1,5 @@
 image: ghcr.io/theoryzhenkov/the-o.space/the-o-space:latest
 containerPort: 80
 hostPort: 3000
-domain: the-o.space
+domain: theor.net
+default: true

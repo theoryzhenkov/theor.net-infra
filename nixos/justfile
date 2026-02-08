@@ -1,8 +1,10 @@
 # NixOS server management
 
+import '../common.just'
+
 # Deploy NixOS configuration to server
 deploy:
-    deploy .#theor-net-web --remote-build
+    deploy .#hetzner-theor-net-web-1 --remote-build
 
 # Initial server setup with nixos-anywhere
 setup:

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APPS_DIR="$REPO_ROOT/apps"
-REMOTE_HOST="${REMOTE_HOST:-hetzner-personal-theoweb}"
+REMOTE_HOST="${REMOTE_HOST:-hetzner-theor.net-web-1}"
 APPS_LOCK_NIX="$APPS_DIR/apps.lock.nix"
 
 # Colors
@@ -45,15 +45,21 @@ NIXHEAD
         local domain=$(yaml_get "$yaml_file" "domain")
         local containerPort=$(yaml_get "$yaml_file" "containerPort")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
+        local default_val=$(yaml_get "$yaml_file" "default")
         
         [ -n "$image" ] && [ -n "$domain" ] && [ -n "$containerPort" ] && [ -n "$hostPort" ] || continue
         
+        local default_line=""
+        if [ "$default_val" = "true" ]; then
+            default_line=$'\n    default = true;'
+        fi
+
         cat >> "$APPS_LOCK_NIX" << EOF
   ${name} = {
     image = "${image}";
     containerPort = ${containerPort};
     hostPort = ${hostPort};
-    domain = "${domain}";
+    domain = "${domain}";${default_line}
   };
 EOF
     done
@@ -82,7 +88,7 @@ cmd_create() {
 image: local/${name}:latest
 containerPort: 8000
 hostPort: ${port}
-domain: ${name}.the-o.space
+domain: ${name}.theor.net
 EOF
 
     log "Created $yaml_file"

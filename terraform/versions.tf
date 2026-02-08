@@ -10,6 +10,9 @@ terraform {
       source  = "carlpett/sops"
       version = "~> 1.1"
     }
+    porkbun = {
+      source = "kyswtn/porkbun"
+    }
   }
 
   backend "local" {}

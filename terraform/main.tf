@@ -6,6 +6,11 @@ provider "hcloud" {
   token = data.sops_file.secrets.data["hcloud_token"]
 }
 
+provider "porkbun" {
+  api_key        = data.sops_file.secrets.data["porkbun_api_key"]
+  secret_api_key = data.sops_file.secrets.data["porkbun_secret_api_key"]
+}
+
 resource "hcloud_ssh_key" "deploy" {
   name       = "hetzner-theor.net-web-ssh-1"
   public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIELtIN+wG3GGLHruiy+Bl3NNJFcAU7uK4Q3rbVD3ad18"
@@ -62,4 +67,46 @@ resource "hcloud_server" "web" {
     project = "theor-net"
     role    = "web"
   }
+}
+
+# DNS — theor.net A/AAAA records pointing to the server
+
+resource "porkbun_dns_record" "theor_net_root" {
+  domain  = "theor.net"
+  name    = ""
+  type    = "A"
+  content = hcloud_primary_ip.web_ipv4.ip_address
+  ttl     = 600
+}
+
+resource "porkbun_dns_record" "theor_net_cue" {
+  domain  = "theor.net"
+  name    = "cue"
+  type    = "A"
+  content = hcloud_primary_ip.web_ipv4.ip_address
+  ttl     = 600
+}
+
+resource "porkbun_dns_record" "theor_net_talk" {
+  domain  = "theor.net"
+  name    = "talk"
+  type    = "A"
+  content = hcloud_primary_ip.web_ipv4.ip_address
+  ttl     = 600
+}
+
+resource "porkbun_dns_record" "theor_net_leaves_wildcard" {
+  domain  = "theor.net"
+  name    = "*.leaves"
+  type    = "A"
+  content = hcloud_primary_ip.web_ipv4.ip_address
+  ttl     = 600
+}
+
+resource "porkbun_dns_record" "theor_net_root_ipv6" {
+  domain  = "theor.net"
+  name    = ""
+  type    = "AAAA"
+  content = hcloud_server.web.ipv6_address
+  ttl     = 600
 }

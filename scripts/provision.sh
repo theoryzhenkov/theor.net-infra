@@ -26,7 +26,7 @@ chmod 600 "$TMPDIR/var/lib/sops-nix/key.txt"
 echo "Provisioning NixOS on $SERVER_IP..."
 nix run github:nix-community/nixos-anywhere -- \
   --extra-files "$TMPDIR" \
-  --flake "$PROJECT_ROOT/nixos#theor-net-web" \
+  --flake "$PROJECT_ROOT/nixos#hetzner-theor-net-web-1" \
   --build-on remote \
   "root@$SERVER_IP"
 

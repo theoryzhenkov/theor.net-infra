@@ -55,6 +55,7 @@ let
     "${app.domain}" = {
       enableACME = true;
       forceSSL = true;
+      default = app.default or false;
 
       locations."/" = {
         proxyPass = "http://127.0.0.1:${toString app.hostPort}";
