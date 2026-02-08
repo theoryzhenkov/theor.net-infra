@@ -5,19 +5,25 @@
   cue = {
     image = "ghcr.io/theoryzhenkov/cue/cue:latest";
     containerPort = 3000;
-    hostPort = 8080;
+    hostPort = 8102;
     domain = "cue.theor.net";
   };
   do-what-you-cant = {
     image = "local/do-what-you-cant:latest";
     containerPort = 8080;
-    hostPort = 8127;
+    hostPort = 8200;
     domain = "do-what-you-cant.leaves.theor.net";
   };
   home-theor-net = {
     image = "ghcr.io/theoryzhenkov/home.theor.net/home-theor-net:latest";
     containerPort = 80;
-    hostPort = 3000;
+    hostPort = 8101;
     domain = "home.theor.net";
+  };
+  index-theor-net = {
+    image = "ghcr.io/theoryzhenkov/index.theor.net/index-theor-net:latest";
+    containerPort = 80;
+    hostPort = 8100;
+    domain = "theor.net";
   };
 }

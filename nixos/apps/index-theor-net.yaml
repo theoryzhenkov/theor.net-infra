@@ -1,0 +1,4 @@
+image: ghcr.io/theoryzhenkov/index.theor.net/index-theor-net:latest
+containerPort: 80
+hostPort: 8100
+domain: theor.net

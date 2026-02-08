@@ -1,4 +1,4 @@
 image: ghcr.io/theoryzhenkov/cue/cue:latest
 containerPort: 3000
-hostPort: 8080
+hostPort: 8102
 domain: cue.theor.net
