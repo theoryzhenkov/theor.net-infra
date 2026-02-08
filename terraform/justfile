@@ -1,0 +1,21 @@
+# Terraform infrastructure management
+
+# Initialize terraform
+init:
+    terraform init
+
+# Show planned changes
+plan:
+    terraform plan
+
+# Apply changes
+apply:
+    terraform apply
+
+# Show outputs
+output *args:
+    terraform output {{args}}
+
+# Edit encrypted secrets
+secrets:
+    sops secrets.enc.yaml

@@ -1,0 +1,13 @@
+# NixOS server management
+
+# Deploy NixOS configuration to server
+deploy:
+    deploy .#theor-net-web --remote-build
+
+# Initial server setup with nixos-anywhere
+setup:
+    ../scripts/provision.sh
+
+# App management CLI
+app *args:
+    @./scripts/app.sh {{args}}

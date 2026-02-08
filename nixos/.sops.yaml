@@ -1,0 +1,14 @@
+# SOPS configuration
+# Server key from: age-keygen -y /var/lib/sops-nix/key.txt
+# Local key: project-specific key from ../.age-key.txt
+
+keys:
+  - &server age1cakqeam9czefy7gdy9wkevpucrn5eym9tgwzapyqv0l77qg8rdaq75m52x
+  - &local age1pffsdphv3fe2e99d0tacuwc2a3hpptrk6hyqexnlekstepgwepcsjpnln9
+
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    key_groups:
+      - age:
+          - *server
+          - *local
