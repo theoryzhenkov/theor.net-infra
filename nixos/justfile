@@ -4,7 +4,7 @@ import '../common.just'
 
 # Deploy NixOS configuration to server
 deploy:
-    deploy .#hetzner-theor-net-web-1 --remote-build --skip-checks
+    deploy .#hetzner-theor-net-web-1 --remote-build --skip-checks 2>&1 | grep -v "ignoring the client-specified setting"
 
 # Initial server setup with nixos-anywhere
 setup:
