@@ -7,7 +7,7 @@ provider "hcloud" {
 }
 
 resource "hcloud_ssh_key" "deploy" {
-  name       = "${var.server_name}-deploy"
+  name       = "hetzner-theor.net-web-ssh-1"
   public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIELtIN+wG3GGLHruiy+Bl3NNJFcAU7uK4Q3rbVD3ad18"
 }
 
@@ -36,6 +36,14 @@ resource "hcloud_firewall" "web" {
   }
 }
 
+resource "hcloud_primary_ip" "web_ipv4" {
+  name          = "${var.server_name}-ipv4"
+  type          = "ipv4"
+  location      = var.location
+  auto_delete   = false
+  assignee_type = "server"
+}
+
 resource "hcloud_server" "web" {
   name        = var.server_name
   server_type = var.server_type
@@ -45,6 +53,10 @@ resource "hcloud_server" "web" {
   ssh_keys = [hcloud_ssh_key.deploy.id]
 
   firewall_ids = [hcloud_firewall.web.id]
+
+  public_net {
+    ipv4 = hcloud_primary_ip.web_ipv4.id
+  }
 
   labels = {
     project = "theor-net"

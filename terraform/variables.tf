@@ -1,17 +1,17 @@
 variable "server_name" {
   description = "Name of the Hetzner server"
   type        = string
-  default     = "theor-net-web"
+  default     = "theor.net-web-1"
 }
 
 variable "server_type" {
   description = "Hetzner server type"
   type        = string
-  default     = "cx32"
+  default     = "cx33"
 }
 
 variable "location" {
-  description = "Hetzner datacenter location"
+  description = "Hetzner location"
   type        = string
   default     = "nbg1"
 }

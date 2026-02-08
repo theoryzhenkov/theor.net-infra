@@ -1,6 +1,6 @@
 output "server_ip" {
-  description = "Public IPv4 address of the server"
-  value       = hcloud_server.web.ipv4_address
+  description = "Public IPv4 address of the server (persistent primary IP)"
+  value       = hcloud_primary_ip.web_ipv4.ip_address
 }
 
 output "server_id" {
