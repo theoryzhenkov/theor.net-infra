@@ -61,5 +61,9 @@
             self.nixosConfigurations.hetzner-theor-net-web-1;
         };
       };
+
+      checks = builtins.mapAttrs
+        (system: deployLib: deployLib.deployChecks self.deploy)
+        deploy-rs.lib;
     };
 }
