@@ -1,0 +1,9 @@
+keys:
+  # Project age key — generated via: age-keygen -o .age-key.txt
+  - &project REPLACE_WITH_PROJECT_AGE_PUBLIC_KEY
+
+creation_rules:
+  - path_regex: secrets\.enc\.yaml$
+    key_groups:
+      - age:
+          - *project
