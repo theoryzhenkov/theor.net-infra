@@ -8,7 +8,9 @@
   ];
 
   system.stateVersion = "24.11";
-  nixpkgs.config.allowUnfree = true;    
+  nixpkgs.config.allowUnfree = true;
+
+  sops.age.keyFile = "/var/lib/sops-nix/key.txt";
 
   networking = {
     hostName = "hetzner-theor-net-web-1";
