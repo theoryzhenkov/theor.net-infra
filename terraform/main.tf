@@ -72,41 +72,55 @@ resource "hcloud_server" "web" {
 # DNS — theor.net A/AAAA records pointing to the server
 
 resource "porkbun_dns_record" "theor_net_root" {
-  domain  = "theor.net"
-  name    = ""
-  type    = "A"
-  content = hcloud_primary_ip.web_ipv4.ip_address
-  ttl     = 600
+  domain   = "theor.net"
+  name     = ""
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
 }
 
 resource "porkbun_dns_record" "theor_net_cue" {
-  domain  = "theor.net"
-  name    = "cue"
-  type    = "A"
-  content = hcloud_primary_ip.web_ipv4.ip_address
-  ttl     = 600
+  domain   = "theor.net"
+  name     = "cue"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
 }
 
 resource "porkbun_dns_record" "theor_net_talk" {
-  domain  = "theor.net"
-  name    = "talk"
-  type    = "A"
-  content = hcloud_primary_ip.web_ipv4.ip_address
-  ttl     = 600
+  domain   = "theor.net"
+  name     = "talk"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
 }
 
 resource "porkbun_dns_record" "theor_net_leaves_wildcard" {
-  domain  = "theor.net"
-  name    = "*.leaves"
-  type    = "A"
-  content = hcloud_primary_ip.web_ipv4.ip_address
-  ttl     = 600
+  domain   = "theor.net"
+  name     = "*.leaves"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
+}
+
+resource "porkbun_dns_record" "theor_net_home" {
+  domain   = "theor.net"
+  name     = "home"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
 }
 
 resource "porkbun_dns_record" "theor_net_root_ipv6" {
-  domain  = "theor.net"
-  name    = ""
-  type    = "AAAA"
-  content = hcloud_server.web.ipv6_address
-  ttl     = 600
+  domain   = "theor.net"
+  name     = ""
+  type     = "AAAA"
+  content  = hcloud_server.web.ipv6_address
+  ttl      = 600
+  priority = 0
 }

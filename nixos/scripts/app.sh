@@ -192,7 +192,7 @@ cmd_status() {
         ssh "$REMOTE_HOST" "systemctl status ${name}"
     else
         log "Remote app services:"
-        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(cue|the-o-space|marimo|watchtower)' || true"
+        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(cue|home-theor-net|marimo|watchtower)' || true"
     fi
 }
 

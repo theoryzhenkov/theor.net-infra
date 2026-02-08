@@ -14,11 +14,10 @@
     hostPort = 8127;
     domain = "do-what-you-cant.leaves.theor.net";
   };
-  the-o-space = {
-    image = "ghcr.io/theoryzhenkov/the-o.space/the-o-space:latest";
+  home-theor-net = {
+    image = "ghcr.io/theoryzhenkov/home.theor.net/home-theor-net:latest";
     containerPort = 80;
     hostPort = 3000;
-    domain = "theor.net";
-    default = true;
+    domain = "home.theor.net";
   };
 }

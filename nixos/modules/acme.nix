@@ -4,7 +4,7 @@
   security.acme = {
     acceptTerms = true;
     defaults = {
-      email = "theo@the-o.space";
+      email = "theo@theor.net";
     };
   };
 }

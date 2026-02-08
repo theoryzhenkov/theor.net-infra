@@ -1,0 +1,4 @@
+image: ghcr.io/theoryzhenkov/home.theor.net/home-theor-net:latest
+containerPort: 80
+hostPort: 3000
+domain: home.theor.net
