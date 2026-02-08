@@ -12,6 +12,27 @@ let
   # Check if image is from registry
   isRegistryImage = image: ! lib.hasPrefix "local/" image;
 
+  # Registry apps for auto-update
+  registryApps = lib.filterAttrs (_: app: isRegistryImage app.image) appsGenerated;
+
+  autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: app: ''
+      echo "Checking ${name}..."
+      OLD=$(${pkgs.docker}/bin/docker image inspect --format '{{.Id}}' "${app.image}" 2>/dev/null || echo "none")
+      if ${pkgs.docker}/bin/docker pull "${app.image}"; then
+        NEW=$(${pkgs.docker}/bin/docker image inspect --format '{{.Id}}' "${app.image}")
+        if [ "$OLD" != "$NEW" ]; then
+          echo "${name}: image updated, restarting..."
+          ${pkgs.systemd}/bin/systemctl restart "${name}"
+        else
+          echo "${name}: up to date"
+        fi
+      else
+        echo "${name}: pull failed, skipping"
+      fi
+    '') registryApps)}
+  '';
+
   mkDockerService = name: app: {
     name = name;
     value = {
@@ -29,14 +50,9 @@ let
         Restart = "always";
         RestartSec = "10s";
 
-        ExecStartPre = lib.mkMerge [
-          [
-            "-${pkgs.docker}/bin/docker stop ${name}"
-            "-${pkgs.docker}/bin/docker rm ${name}"
-          ]
-          # Only pull registry images, not local ones
-          (lib.optional (isRegistryImage app.image) 
-            "${pkgs.docker}/bin/docker pull ${app.image}")
+        ExecStartPre = [
+          "-${pkgs.docker}/bin/docker stop ${name}"
+          "-${pkgs.docker}/bin/docker rm ${name}"
         ];
 
         ExecStart = ''
@@ -95,9 +111,30 @@ in
   virtualisation.docker.enable = true;
 
   # Docker services for app containers
-  # Update containers by running: systemctl restart <app-name>
-  # Or deploy with: nixos-rebuild switch (pulls new images on service start)
-  systemd.services = lib.listToAttrs (lib.mapAttrsToList mkDockerService appsGenerated);
+  systemd.services = lib.listToAttrs (lib.mapAttrsToList mkDockerService appsGenerated) // {
+    docker-auto-update = {
+      description = "Pull latest Docker images and restart updated services";
+      after = [ "docker.service" "network-online.target" ];
+      requires = [ "docker.service" ];
+      wants = [ "network-online.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = autoUpdateScript;
+      };
+    };
+  };
+
+  # Auto-update timer: checks for new registry images every 5 minutes
+  systemd.timers.docker-auto-update = {
+    description = "Periodically check for Docker image updates";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "5min";
+      RandomizedDelaySec = "30s";
+    };
+  };
 
   services.nginx.virtualHosts = lib.mkMerge (lib.mapAttrsToList mkProxyVhost appsGenerated);
 }

@@ -128,7 +128,7 @@ cmd_deploy() {
         warn "Remember to run 'just deploy' if this is a new app!"
     else
         warn "Image $image is from a registry - no need to deploy manually"
-        warn "Watchtower will handle updates automatically"
+        warn "Auto-update timer checks for new images every 5 minutes"
         warn "To force update: ssh $REMOTE_HOST 'systemctl restart ${name}'"
     fi
 }
@@ -192,7 +192,7 @@ cmd_status() {
         ssh "$REMOTE_HOST" "systemctl status ${name}"
     else
         log "Remote app services:"
-        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(cue|home-theor-net|marimo|watchtower)' || true"
+        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(cue|home-theor-net|index-theor-net|do-what-you-cant|docker-auto-update)' || true"
     fi
 }
 
@@ -231,7 +231,8 @@ Workflow for local apps:
   4. just app deploy myapp     # push image to server
   5. just deploy               # apply NixOS config (new apps only)
 
-Registry apps (ghcr.io) are auto-updated by watchtower.
+Registry apps (ghcr.io) are auto-updated every 5 minutes by the docker-auto-update timer.
+Check update logs: ssh $REMOTE_HOST 'journalctl -u docker-auto-update'
 EOF
 }
 
