@@ -5,6 +5,7 @@
     ./modules/nginx.nix
     ./modules/acme.nix
     ./modules/apps.nix
+    ./modules/postgres.nix
   ];
 
   system.stateVersion = "24.11";
