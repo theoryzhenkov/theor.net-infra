@@ -3,7 +3,7 @@
 let
   # Hetzner Cloud Volume ID — update after first `terraform apply`
   # Find with: terraform output data_volume_id
-  volumeId = "CHANGE_ME";
+  volumeId = "104621702";
 in
 {
   # Mount the Hetzner Cloud Volume for persistent data
