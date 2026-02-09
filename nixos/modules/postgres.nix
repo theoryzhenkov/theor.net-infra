@@ -18,7 +18,7 @@ in
     dataDir = "/mnt/data/postgresql/17";
 
     settings = {
-      listen_addresses = "127.0.0.1,172.17.0.1"; # localhost + docker bridge
+      listen_addresses = lib.mkForce "127.0.0.1,172.17.0.1"; # localhost + docker bridge
       max_connections = 100;
     };
 
