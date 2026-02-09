@@ -33,13 +33,24 @@ in
     '';
   };
 
-  # Ensure PostgreSQL starts after the volume is mounted,
-  # and create the data directory if it doesn't exist yet
-  systemd.services.postgresql = {
+  # Create the data directory on the volume before PostgreSQL starts.
+  # Must be a separate service because PostgreSQL's systemd namespace setup
+  # (ReadWritePaths) fails if the target directory doesn't exist yet.
+  systemd.services.postgresql-datadir-init = {
+    description = "Create PostgreSQL data directory on volume";
     after = [ "mnt-data.mount" ];
     requires = [ "mnt-data.mount" ];
-    preStart = lib.mkBefore ''
-      install -d -m 0700 -o postgres -g postgres /mnt/data/postgresql
-    '';
+    before = [ "postgresql.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres /mnt/data/postgresql/16";
+    };
+  };
+
+  systemd.services.postgresql = {
+    after = [ "mnt-data.mount" "postgresql-datadir-init.service" ];
+    requires = [ "mnt-data.mount" "postgresql-datadir-init.service" ];
   };
 }
