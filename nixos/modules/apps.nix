@@ -108,14 +108,14 @@ in
   # GHCR authentication via sops-nix
   sops.secrets = {
     ghcr_username = {
-      sopsFile = ../secrets/secrets.yaml;
+      sopsFile = ../secrets/secrets.enc.yaml;
     };
     ghcr_token = {
-      sopsFile = ../secrets/secrets.yaml;
+      sopsFile = ../secrets/secrets.enc.yaml;
     };
   } // lib.mapAttrs' (name: _:
     lib.nameValuePair "db_password_${name}" {
-      sopsFile = ../secrets/secrets.yaml;
+      sopsFile = ../secrets/secrets.enc.yaml;
     }
   ) dbApps;
 

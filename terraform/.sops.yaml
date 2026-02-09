@@ -3,7 +3,7 @@ keys:
   - &project age1pffsdphv3fe2e99d0tacuwc2a3hpptrk6hyqexnlekstepgwepcsjpnln9
 
 creation_rules:
-  - path_regex: secrets\.enc\.yaml$
+  - path_regex: secrets/secrets\.enc\.yaml$
     key_groups:
       - age:
           - *project

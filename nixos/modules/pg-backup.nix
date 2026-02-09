@@ -44,13 +44,13 @@ let
 in
 {
   sops.secrets.b2_key_id = {
-    sopsFile = ../secrets/secrets.yaml;
+    sopsFile = ../secrets/secrets.enc.yaml;
   };
   sops.secrets.b2_app_key = {
-    sopsFile = ../secrets/secrets.yaml;
+    sopsFile = ../secrets/secrets.enc.yaml;
   };
   sops.secrets.b2_bucket = {
-    sopsFile = ../secrets/secrets.yaml;
+    sopsFile = ../secrets/secrets.enc.yaml;
   };
 
   systemd.services.pg-backup = {
