@@ -12,8 +12,9 @@ let
   # Check if image is from registry
   isRegistryImage = image: ! lib.hasPrefix "local/" image;
 
-  # Registry apps for auto-update
+  # App subsets
   registryApps = lib.filterAttrs (_: app: isRegistryImage app.image) appsGenerated;
+  dbApps = lib.filterAttrs (_: app: app.database or false) appsGenerated;
 
   autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: app: ''
@@ -33,39 +34,61 @@ let
     '') registryApps)}
   '';
 
-  mkDockerService = name: app: {
-    name = name;
-    value = {
-      description = "${name} Docker container";
-      after = [
-        "docker.service"
-        "network-online.target"
+  hasDatabase = app: app.database or false;
+
+  mkDockerService = name: app:
+    let
+      wantsDb = hasDatabase app;
+
+      dbDeps = lib.optionals wantsDb [
+        "postgresql.service"
+        "pg-set-passwords.service"
       ];
-      requires = [ "docker.service" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
 
-      serviceConfig = {
-        Type = "simple";
-        Restart = "always";
-        RestartSec = "10s";
+      execStart =
+        if wantsDb then
+          pkgs.writeShellScript "start-${name}" ''
+            DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
+            exec ${pkgs.docker}/bin/docker run --rm \
+              --name ${name} \
+              --add-host=host.docker.internal:host-gateway \
+              -e DATABASE_URL="postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}" \
+              -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
+              ${app.image}
+          ''
+        else
+          ''
+            ${pkgs.docker}/bin/docker run --rm \
+              --name ${name} \
+              -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
+              ${app.image}
+          '';
+    in
+    {
+      name = name;
+      value = {
+        description = "${name} Docker container";
+        after = [ "docker.service" "network-online.target" ] ++ dbDeps;
+        requires = [ "docker.service" ] ++ dbDeps;
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
 
-        ExecStartPre = [
-          "-${pkgs.docker}/bin/docker stop ${name}"
-          "-${pkgs.docker}/bin/docker rm ${name}"
-        ];
+        serviceConfig = {
+          Type = "simple";
+          Restart = "always";
+          RestartSec = "10s";
 
-        ExecStart = ''
-          ${pkgs.docker}/bin/docker run --rm \
-            --name ${name} \
-            -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
-            ${app.image}
-        '';
+          ExecStartPre = [
+            "-${pkgs.docker}/bin/docker stop ${name}"
+            "-${pkgs.docker}/bin/docker rm ${name}"
+          ];
 
-        ExecStop = "${pkgs.docker}/bin/docker stop ${name}";
+          ExecStart = execStart;
+
+          ExecStop = "${pkgs.docker}/bin/docker stop ${name}";
+        };
       };
     };
-  };
 
   mkProxyVhost = name: app: {
     "${app.domain}" = {
@@ -83,12 +106,18 @@ let
 in
 {
   # GHCR authentication via sops-nix
-  sops.secrets.ghcr_username = {
-    sopsFile = ../secrets/secrets.yaml;
-  };
-  sops.secrets.ghcr_token = {
-    sopsFile = ../secrets/secrets.yaml;
-  };
+  sops.secrets = {
+    ghcr_username = {
+      sopsFile = ../secrets/secrets.yaml;
+    };
+    ghcr_token = {
+      sopsFile = ../secrets/secrets.yaml;
+    };
+  } // lib.mapAttrs' (name: _:
+    lib.nameValuePair "db_password_${name}" {
+      sopsFile = ../secrets/secrets.yaml;
+    }
+  ) dbApps;
 
   # Generate /root/.docker/config.json on system activation
   system.activationScripts.docker-ghcr-login = lib.stringAfter [ "setupSecrets" ] ''
@@ -110,20 +139,50 @@ in
 
   virtualisation.docker.enable = true;
 
-  # Docker services for app containers
-  systemd.services = lib.listToAttrs (lib.mapAttrsToList mkDockerService appsGenerated) // {
-    docker-auto-update = {
-      description = "Pull latest Docker images and restart updated services";
-      after = [ "docker.service" "network-online.target" ];
-      requires = [ "docker.service" ];
-      wants = [ "network-online.target" ];
+  # Per-app PostgreSQL databases and users
+  services.postgresql.ensureDatabases = lib.mapAttrsToList (name: _: name) dbApps;
+  services.postgresql.ensureUsers = lib.mapAttrsToList (name: _: {
+    name = name;
+    ensureDBOwnership = true;
+  }) dbApps;
 
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = autoUpdateScript;
+  # Docker services for app containers
+  systemd.services =
+    lib.listToAttrs (lib.mapAttrsToList mkDockerService appsGenerated)
+    // {
+      docker-auto-update = {
+        description = "Pull latest Docker images and restart updated services";
+        after = [ "docker.service" "network-online.target" ];
+        requires = [ "docker.service" ];
+        wants = [ "network-online.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = autoUpdateScript;
+        };
+      };
+    }
+    // lib.optionalAttrs (dbApps != { }) {
+      # Set passwords for app database users from SOPS secrets
+      pg-set-passwords = {
+        description = "Set PostgreSQL passwords for app databases";
+        after = [ "postgresql.service" ];
+        requires = [ "postgresql.service" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        script = lib.concatStringsSep "\n" (lib.mapAttrsToList (name: _: ''
+          DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
+          ${pkgs.util-linux}/bin/runuser -u postgres -- \
+            ${config.services.postgresql.package}/bin/psql -c \
+            "ALTER USER \"${name}\" PASSWORD '$DB_PASS';"
+        '') dbApps);
       };
     };
-  };
 
   # Auto-update timer: checks for new registry images every 5 minutes
   systemd.timers.docker-auto-update = {

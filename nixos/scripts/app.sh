@@ -46,6 +46,7 @@ NIXHEAD
         local containerPort=$(yaml_get "$yaml_file" "containerPort")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local default_val=$(yaml_get "$yaml_file" "default")
+        local database=$(yaml_get "$yaml_file" "database")
         
         [ -n "$image" ] && [ -n "$domain" ] && [ -n "$containerPort" ] && [ -n "$hostPort" ] || continue
         
@@ -54,12 +55,17 @@ NIXHEAD
             default_line=$'\n    default = true;'
         fi
 
+        local database_line=""
+        if [ "$database" = "true" ]; then
+            database_line=$'\n    database = true;'
+        fi
+
         cat >> "$APPS_LOCK_NIX" << EOF
   ${name} = {
     image = "${image}";
     containerPort = ${containerPort};
     hostPort = ${hostPort};
-    domain = "${domain}";${default_line}
+    domain = "${domain}";${default_line}${database_line}
   };
 EOF
     done
@@ -169,10 +175,14 @@ cmd_list() {
         local image=$(yaml_get "$yaml_file" "image")
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
+        local database=$(yaml_get "$yaml_file" "database")
         local type="registry"
         is_local_image "$image" && type="local"
         
-        echo "  - $name ($type)"
+        local db_tag=""
+        [ "$database" = "true" ] && db_tag=" [db]"
+        
+        echo "  - $name ($type)${db_tag}"
         echo "      image:   ${image}"
         echo "      domain:  ${domain:-not set}"
         echo "      port:    ${hostPort:-?}"
