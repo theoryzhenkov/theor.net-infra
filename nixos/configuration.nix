@@ -48,6 +48,7 @@
     curl
     wget
     rclone
+    crane
   ];
 
   nix = {

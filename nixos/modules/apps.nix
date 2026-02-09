@@ -11,54 +11,100 @@ let
 
   # App subsets
   dbApps = lib.filterAttrs (_: app: app.database or false) appsGenerated;
+  secretsApps = lib.filterAttrs (_: app: app ? secrets) appsGenerated;
+
+  hasDatabase = app: app.database or false;
+  hasSecrets = app: app ? secrets;
 
   autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: app: ''
       echo "Checking ${name}..."
+      RESTART_NEEDED=""
       OLD=$(${pkgs.docker}/bin/docker image inspect --format '{{.Id}}' "${app.image}" 2>/dev/null || echo "none")
       if ${pkgs.docker}/bin/docker pull "${app.image}"; then
         NEW=$(${pkgs.docker}/bin/docker image inspect --format '{{.Id}}' "${app.image}")
         if [ "$OLD" != "$NEW" ]; then
-          echo "${name}: image updated, restarting..."
-          ${pkgs.systemd}/bin/systemctl restart "${name}"
-        else
-          echo "${name}: up to date"
+          echo "${name}: image updated"
+          RESTART_NEEDED=1
         fi
       else
-        echo "${name}: pull failed, skipping"
+        echo "${name}: image pull failed, skipping"
+      fi
+    '' + lib.optionalString (hasSecrets app) ''
+      # Check secrets artifact updates
+      SECRETS_DIR="/var/lib/app-secrets/${name}"
+      mkdir -p "$SECRETS_DIR"
+      OLD_DIGEST=""
+      [ -f "$SECRETS_DIR/digest" ] && OLD_DIGEST=$(cat "$SECRETS_DIR/digest")
+      NEW_DIGEST=$(${pkgs.crane}/bin/crane digest "${app.secrets}" 2>/dev/null || echo "")
+      if [ -n "$NEW_DIGEST" ] && [ "$OLD_DIGEST" != "$NEW_DIGEST" ]; then
+        echo "${name}: secrets artifact updated"
+        echo "$NEW_DIGEST" > "$SECRETS_DIR/digest"
+        RESTART_NEEDED=1
+      fi
+    '' + ''
+      if [ -n "$RESTART_NEEDED" ]; then
+        echo "${name}: restarting..."
+        ${pkgs.systemd}/bin/systemctl restart "${name}"
+      else
+        echo "${name}: up to date"
       fi
     '') appsGenerated)}
   '';
 
-  hasDatabase = app: app.database or false;
-
   mkDockerService = name: app:
     let
       wantsDb = hasDatabase app;
+      wantsSecrets = hasSecrets app;
 
       dbDeps = lib.optionals wantsDb [
         "postgresql.service"
         "pg-set-passwords.service"
       ];
 
-      execStart =
-        if wantsDb then
-          pkgs.writeShellScript "start-${name}" ''
-            DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
-            exec ${pkgs.docker}/bin/docker run --rm \
-              --name ${name} \
-              --add-host=host.docker.internal:host-gateway \
-              -e DATABASE_URL="postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}" \
-              -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
-              ${app.image}
-          ''
-        else
-          ''
-            ${pkgs.docker}/bin/docker run --rm \
-              --name ${name} \
-              -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
-              ${app.image}
-          '';
+      execStart = pkgs.writeShellScript "start-${name}" (''
+        set -euo pipefail
+      '' + lib.optionalString (wantsSecrets || wantsDb) ''
+        SECRETS_DIR="/var/lib/app-secrets/${name}"
+        mkdir -p "$SECRETS_DIR"
+        : > "$SECRETS_DIR/docker.env"
+      '' + lib.optionalString wantsSecrets ''
+
+        # Pull encrypted secrets from OCI artifact
+        echo "Pulling secrets artifact for ${name}..."
+        TMPDIR=$(mktemp -d)
+        ${pkgs.crane}/bin/crane export "${app.secrets}" - | tar xf - -C "$TMPDIR"
+        ENCRYPTED=$(find "$TMPDIR" -name '*.enc.yaml' -type f -print -quit)
+        if [ -z "$ENCRYPTED" ]; then
+          echo "ERROR: No .enc.yaml found in secrets artifact for ${name}"
+          rm -rf "$TMPDIR"
+          exit 1
+        fi
+        cp "$ENCRYPTED" "$SECRETS_DIR/secrets.enc.yaml"
+        rm -rf "$TMPDIR"
+
+        # Decrypt app secrets and write to env file
+        echo "Decrypting secrets for ${name}..."
+        SOPS_AGE_KEY="$(cat ${config.sops.secrets."age_key_${name}".path})" \
+          ${pkgs.sops}/bin/sops --decrypt --input-type yaml --output-type dotenv \
+          "$SECRETS_DIR/secrets.enc.yaml" >> "$SECRETS_DIR/docker.env"
+        rm -f "$SECRETS_DIR/secrets.enc.yaml"
+
+        # Store current artifact digest for auto-update tracking
+        ${pkgs.crane}/bin/crane digest "${app.secrets}" > "$SECRETS_DIR/digest" 2>/dev/null || true
+      '' + lib.optionalString wantsDb ''
+
+        DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
+        echo "DATABASE_URL=postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}" >> "$SECRETS_DIR/docker.env"
+      '' + ''
+
+        exec ${pkgs.docker}/bin/docker run --rm \
+          --name ${name} \
+          ${lib.optionalString wantsDb "--add-host=host.docker.internal:host-gateway"} \
+          ${lib.optionalString (wantsSecrets || wantsDb) ''--env-file "$SECRETS_DIR/docker.env"''} \
+          -p 127.0.0.1:${toString app.hostPort}:${toString app.containerPort} \
+          ${app.image}
+      '');
     in
     {
       name = name;
@@ -113,7 +159,12 @@ in
     lib.nameValuePair "db_password_${name}" {
       sopsFile = ../secrets/secrets.enc.yaml;
     }
-  ) dbApps;
+  ) dbApps
+  // lib.mapAttrs' (name: _:
+    lib.nameValuePair "age_key_${name}" {
+      sopsFile = ../secrets/secrets.enc.yaml;
+    }
+  ) secretsApps;
 
   # Generate /root/.docker/config.json on system activation
   system.activationScripts.docker-ghcr-login = lib.stringAfter [ "setupSecrets" ] ''
@@ -180,9 +231,9 @@ in
       };
     };
 
-  # Auto-update timer: checks for new registry images every 5 minutes
+  # Auto-update timer: checks for new registry images and secrets every 5 minutes
   systemd.timers.docker-auto-update = {
-    description = "Periodically check for Docker image updates";
+    description = "Periodically check for Docker image and secrets updates";
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "2min";

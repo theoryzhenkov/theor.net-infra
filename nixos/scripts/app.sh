@@ -45,6 +45,8 @@ NIXHEAD
         
         [ -n "$image" ] && [ -n "$domain" ] && [ -n "$containerPort" ] && [ -n "$hostPort" ] || continue
         
+        local secrets=$(yaml_get "$yaml_file" "secrets")
+
         local default_line=""
         if [ "$default_val" = "true" ]; then
             default_line=$'\n    default = true;'
@@ -55,12 +57,17 @@ NIXHEAD
             database_line=$'\n    database = true;'
         fi
 
+        local secrets_line=""
+        if [ -n "$secrets" ]; then
+            secrets_line=$'\n    secrets = "'"${secrets}"'";'
+        fi
+
         cat >> "$APPS_LOCK_NIX" << EOF
   ${name} = {
     image = "${image}";
     containerPort = ${containerPort};
     hostPort = ${hostPort};
-    domain = "${domain}";${default_line}${database_line}
+    domain = "${domain}";${default_line}${database_line}${secrets_line}
   };
 EOF
     done
@@ -142,11 +149,14 @@ cmd_list() {
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local database=$(yaml_get "$yaml_file" "database")
+        local secrets=$(yaml_get "$yaml_file" "secrets")
         
         local db_tag=""
         [ "$database" = "true" ] && db_tag=" [db]"
+        local secrets_tag=""
+        [ -n "$secrets" ] && secrets_tag=" [secrets]"
         
-        echo "  - ${name}${db_tag}"
+        echo "  - ${name}${db_tag}${secrets_tag}"
         echo "      image:   ${image}"
         echo "      domain:  ${domain:-not set}"
         echo "      port:    ${hostPort:-?}"
@@ -179,18 +189,94 @@ cmd_generate() {
     generate_nix_config
 }
 
+cmd_init_secrets() {
+    local name="${1:-}"
+    [ -n "$name" ] || error "Usage: just app init-secrets <name>"
+
+    local yaml_file="$APPS_DIR/${name}.yaml"
+    [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
+
+    command -v age-keygen >/dev/null 2>&1 || error "age-keygen not found. Install age: nix-shell -p age"
+
+    log "Generating Age keypair for app: $name"
+
+    local key_file
+    key_file=$(mktemp)
+    age-keygen -o "$key_file" 2>/dev/null
+    local public_key
+    public_key=$(grep "^# public key:" "$key_file" | sed 's/^# public key: //')
+    local private_key
+    private_key=$(grep "^AGE-SECRET-KEY-" "$key_file")
+    rm -f "$key_file"
+
+    [ -n "$public_key" ] && [ -n "$private_key" ] || error "Failed to generate Age keypair"
+
+    echo ""
+    echo "Age keypair generated for $name:"
+    echo ""
+    echo "  Public key:  $public_key"
+    echo "  Private key: $private_key"
+    echo ""
+    log "Next steps:"
+    echo "  1. Add the private key to infra SOPS secrets:"
+    echo "       sops nixos/secrets/secrets.enc.yaml"
+    echo "       # Add: age_key_${name}: ${private_key}"
+    echo ""
+    echo "  2. In the app repo, create .sops.yaml:"
+    echo "       keys:"
+    echo "         - &app ${public_key}"
+    echo "       creation_rules:"
+    echo "         - path_regex: secrets/.*\\.enc\\.yaml\$"
+    echo "           key_groups:"
+    echo "             - age:"
+    echo "                 - *app"
+    echo ""
+    echo "  3. Create and encrypt secrets:"
+    echo "       sops secrets/production.enc.yaml"
+    echo ""
+    echo "  4. CI: push encrypted file as OCI artifact:"
+    echo "       echo \"\$GHCR_TOKEN\" | crane auth login ghcr.io -u \"\$GHCR_USER\" --password-stdin"
+    echo "       crane append -f <(tar cf - secrets/production.enc.yaml) \\"
+    echo "         -t ghcr.io/theoryzhenkov/${name}/${name}-secrets:production"
+    echo ""
+    echo "  5. Add 'secrets' field to $yaml_file:"
+    echo "       secrets: ghcr.io/theoryzhenkov/${name}/${name}-secrets:production"
+    echo ""
+    echo "  6. Regenerate and deploy:"
+    echo "       just app generate && just deploy"
+}
+
+cmd_secrets_push() {
+    local name="${1:-}"
+    local file="${2:-}"
+    [ -n "$name" ] && [ -n "$file" ] || error "Usage: just app secrets-push <name> <file>"
+
+    local yaml_file="$APPS_DIR/${name}.yaml"
+    [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
+    [ -f "$file" ] || error "File not found: $file"
+
+    log "Pushing encrypted secrets for $name to $REMOTE_HOST..."
+    ssh "$REMOTE_HOST" "mkdir -p /var/lib/app-secrets/${name}"
+    scp "$file" "$REMOTE_HOST:/var/lib/app-secrets/${name}/secrets.enc.yaml"
+    log "Secrets pushed. Restarting $name..."
+    ssh "$REMOTE_HOST" "systemctl restart ${name}"
+    log "Done"
+}
+
 cmd_help() {
     cat << 'EOF'
 Usage: just app <command> [args]
 
 Commands:
-  create <name>      Create a new app config
-  deploy <name>      Pull latest image and restart on server
-  remove <name>      Remove app from server (optionally delete config)
-  list               List all apps
-  logs <name>        Tail logs for an app
-  status [name]      Show service status
-  generate           Regenerate apps/apps.lock.nix from YAML files
+  create <name>          Create a new app config
+  deploy <name>          Pull latest image and restart on server
+  remove <name>          Remove app from server (optionally delete config)
+  list                   List all apps
+  logs <name>            Tail logs for an app
+  status [name]          Show service status
+  generate               Regenerate apps/apps.lock.nix from YAML files
+  init-secrets <name>    Generate Age keypair for app secrets (one-time setup)
+  secrets-push <name> <file>  Push encrypted secrets file to server via SCP
 
 Environment:
   REMOTE_HOST        SSH host (default: hetzner-theor.net-web-1)
@@ -201,20 +287,36 @@ Workflow:
   3. just deploy               # apply NixOS config
   4. just app deploy myapp     # force pull + restart (optional, auto-update runs every 5 min)
 
+Secrets workflow:
+  Per-app secrets are encrypted in app repos and pulled to the server as OCI artifacts.
+  The infra repo stores each app's Age private key for decryption.
+
+  1. just app init-secrets myapp   # generate Age keypair, get onboarding instructions
+  2. In app repo: create .sops.yaml with the public key, encrypt secrets
+  3. CI pushes encrypted secrets as OCI artifact to GHCR
+  4. Add 'secrets: ghcr.io/.../myapp-secrets:production' to apps/myapp.yaml
+  5. just app generate && just deploy
+
+  Manual fallback (no CI):
+    just app secrets-push myapp path/to/secrets.enc.yaml
+
 Apps are auto-updated every 5 minutes by the docker-auto-update timer.
+Both image updates and secrets artifact changes trigger restarts.
 Check update logs: ssh $REMOTE_HOST 'journalctl -u docker-auto-update'
 EOF
 }
 
 # Main
 case "${1:-help}" in
-    create)   cmd_create "${2:-}" ;;
-    deploy)   cmd_deploy "${2:-}" ;;
-    remove)   cmd_remove "${2:-}" ;;
-    list)     cmd_list ;;
-    logs)     cmd_logs "${2:-}" ;;
-    status)   cmd_status "${2:-}" ;;
-    generate) cmd_generate ;;
+    create)        cmd_create "${2:-}" ;;
+    deploy)        cmd_deploy "${2:-}" ;;
+    remove)        cmd_remove "${2:-}" ;;
+    list)          cmd_list ;;
+    logs)          cmd_logs "${2:-}" ;;
+    status)        cmd_status "${2:-}" ;;
+    generate)      cmd_generate ;;
+    init-secrets)  cmd_init_secrets "${2:-}" ;;
+    secrets-push)  cmd_secrets_push "${2:-}" "${3:-}" ;;
     help|--help|-h) cmd_help ;;
     *) error "Unknown command: $1. Run 'just app help' for usage." ;;
 esac

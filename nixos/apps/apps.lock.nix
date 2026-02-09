@@ -7,6 +7,8 @@
     containerPort = 3000;
     hostPort = 8102;
     domain = "cue.theor.net";
+    database = true;
+    secrets = "ghcr.io/theoryzhenkov/cue/cue-secrets:production";
   };
   home-theor-net = {
     image = "ghcr.io/theoryzhenkov/home.theor.net/home-theor-net:latest";
