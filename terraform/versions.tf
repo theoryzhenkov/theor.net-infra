@@ -6,6 +6,10 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.49"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
     sops = {
       source  = "carlpett/sops"
       version = "~> 1.1"

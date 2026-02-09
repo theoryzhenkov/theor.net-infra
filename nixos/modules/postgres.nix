@@ -1,14 +1,9 @@
 { config, pkgs, lib, ... }:
 
-let
-  # Hetzner Cloud Volume ID — update after first `terraform apply`
-  # Find with: terraform output data_volume_id
-  volumeId = "104621702";
-in
 {
-  # Mount the Hetzner Cloud Volume for persistent data
+  # Mount the Hetzner Cloud Volume for persistent data (labeled by Terraform)
   fileSystems."/mnt/data" = {
-    device = "/dev/disk/by-id/scsi-0HC_Volume_${volumeId}";
+    device = "/dev/disk/by-label/theor-net-data-1";
     fsType = "ext4";
     options = [ "defaults" "nofail" ];
   };

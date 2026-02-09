@@ -84,6 +84,23 @@ resource "hcloud_volume_attachment" "data" {
   automount = false # NixOS handles mounting
 }
 
+resource "null_resource" "volume_label" {
+  depends_on = [hcloud_volume_attachment.data]
+
+  triggers = {
+    volume_id = hcloud_volume.data.id
+  }
+
+  provisioner "remote-exec" {
+    inline = ["e2label /dev/disk/by-id/scsi-0HC_Volume_${hcloud_volume.data.id} theor-net-data-1"]
+    connection {
+      type = "ssh"
+      host = hcloud_primary_ip.web_ipv4.ip_address
+      user = "root"
+    }
+  }
+}
+
 # Backblaze B2 — off-site PostgreSQL backups
 
 provider "b2" {
