@@ -10,6 +10,9 @@ deploy:
 setup:
     ../scripts/provision.sh
 
+secrets:
+    sops secrets/secrets.enc.yaml
+
 # App management CLI
 app *args:
     @./scripts/app.sh {{args}}
