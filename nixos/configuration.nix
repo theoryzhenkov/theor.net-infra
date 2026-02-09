@@ -6,6 +6,7 @@
     ./modules/acme.nix
     ./modules/apps.nix
     ./modules/postgres.nix
+    ./modules/pg-backup.nix
   ];
 
   system.stateVersion = "24.11";
@@ -46,6 +47,7 @@
     htop
     curl
     wget
+    rclone
   ];
 
   nix = {
