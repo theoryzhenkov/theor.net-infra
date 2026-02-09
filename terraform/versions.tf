@@ -13,6 +13,10 @@ terraform {
     porkbun = {
       source = "kyswtn/porkbun"
     }
+    b2 = {
+      source  = "Backblaze/b2"
+      version = "~> 0.9"
+    }
   }
 
   backend "local" {}

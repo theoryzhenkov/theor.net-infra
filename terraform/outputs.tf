@@ -12,3 +12,8 @@ output "server_status" {
   description = "Current server status"
   value       = hcloud_server.web.status
 }
+
+output "data_volume_id" {
+  description = "Hetzner Cloud Volume ID (needed for NixOS mount config)"
+  value       = hcloud_volume.data.id
+}

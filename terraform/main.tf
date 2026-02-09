@@ -69,6 +69,38 @@ resource "hcloud_server" "web" {
   }
 }
 
+# Persistent data volume for PostgreSQL
+
+resource "hcloud_volume" "data" {
+  name     = "${var.server_name}-data"
+  size     = 10 # GB, expandable later
+  location = var.location
+  format   = "ext4"
+}
+
+resource "hcloud_volume_attachment" "data" {
+  volume_id = hcloud_volume.data.id
+  server_id = hcloud_server.web.id
+  automount = false # NixOS handles mounting
+}
+
+# Backblaze B2 — off-site PostgreSQL backups
+
+provider "b2" {
+  application_key_id = data.sops_file.secrets.data["b2_key_id"]
+  application_key    = data.sops_file.secrets.data["b2_app_key"]
+}
+
+resource "b2_bucket" "pg_backups" {
+  bucket_name = "theor-net-pg-backups"
+  bucket_type = "allPrivate"
+
+  lifecycle_rules {
+    file_name_prefix              = ""
+    days_from_uploading_to_hiding = 30
+  }
+}
+
 # DNS — theor.net A/AAAA records pointing to the server
 
 resource "porkbun_dns_record" "theor_net_root" {
