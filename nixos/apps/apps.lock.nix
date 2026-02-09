@@ -8,12 +8,6 @@
     hostPort = 8102;
     domain = "cue.theor.net";
   };
-  do-what-you-cant = {
-    image = "local/do-what-you-cant:latest";
-    containerPort = 8080;
-    hostPort = 8200;
-    domain = "do-what-you-cant.leaves.theor.net";
-  };
   home-theor-net = {
     image = "ghcr.io/theoryzhenkov/home.theor.net/home-theor-net:latest";
     containerPort = 80;

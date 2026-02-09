@@ -1,4 +1,0 @@
-image: local/do-what-you-cant:latest
-containerPort: 8080
-hostPort: 8200
-domain: do-what-you-cant.leaves.theor.net

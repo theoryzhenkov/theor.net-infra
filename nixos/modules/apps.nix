@@ -9,11 +9,7 @@ let
   # Import generated apps from YAML files
   appsGenerated = import ../apps/apps.lock.nix;
 
-  # Check if image is from registry
-  isRegistryImage = image: ! lib.hasPrefix "local/" image;
-
   # App subsets
-  registryApps = lib.filterAttrs (_: app: isRegistryImage app.image) appsGenerated;
   dbApps = lib.filterAttrs (_: app: app.database or false) appsGenerated;
 
   autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
@@ -31,7 +27,7 @@ let
       else
         echo "${name}: pull failed, skipping"
       fi
-    '') registryApps)}
+    '') appsGenerated)}
   '';
 
   hasDatabase = app: app.database or false;

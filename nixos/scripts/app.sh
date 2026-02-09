@@ -23,11 +23,6 @@ yaml_get() {
     grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | tr -d '"'"'"
 }
 
-# Check if image is local (starts with local/)
-is_local_image() {
-    [[ "$1" == local/* ]]
-}
-
 generate_nix_config() {
     log "Generating apps/apps.lock.nix..."
     
@@ -91,14 +86,14 @@ cmd_create() {
     
     # Default app.yaml  
     cat > "$yaml_file" << EOF
-image: local/${name}:latest
+image: ghcr.io/theoryzhenkov/${name}/${name}:latest
 containerPort: 8000
 hostPort: ${port}
 domain: ${name}.theor.net
 EOF
 
     log "Created $yaml_file"
-    log "Edit it, then run: just app generate && just app deploy $name"
+    log "Edit it, then run: just app generate && just deploy"
 }
 
 cmd_deploy() {
@@ -111,32 +106,9 @@ cmd_deploy() {
     local image=$(yaml_get "$yaml_file" "image")
     [ -n "$image" ] || error "No 'image' specified in $yaml_file"
     
-    if is_local_image "$image"; then
-        # Check if image exists locally
-        if ! docker image inspect "$image" &>/dev/null; then
-            error "Image $image not found locally. Build it first with: docker build -t $image /path/to/app"
-        fi
-        
-        log "Pushing local image $image to $REMOTE_HOST..."
-        
-        # Compress before sending (often faster than SSH compression alone)
-        # Use gzip with best compression/speed tradeoff, disable SSH compression since we're pre-compressing
-        if command -v pv >/dev/null 2>&1; then
-            docker save "$image" | gzip -c | pv -p -t -e -r -b -i 0.5 | ssh -o Compression=no "$REMOTE_HOST" 'gunzip | docker load'
-        else
-            docker save "$image" | gzip -c | ssh -o Compression=no "$REMOTE_HOST" 'gunzip | docker load'
-        fi
-        
-        log "Restarting service on remote..."
-        ssh "$REMOTE_HOST" "systemctl restart ${name} || true"
-        
-        log "Deployed $name"
-        warn "Remember to run 'just deploy' if this is a new app!"
-    else
-        warn "Image $image is from a registry - no need to deploy manually"
-        warn "Auto-update timer checks for new images every 5 minutes"
-        warn "To force update: ssh $REMOTE_HOST 'systemctl restart ${name}'"
-    fi
+    log "Pulling latest image and restarting $name on $REMOTE_HOST..."
+    ssh "$REMOTE_HOST" "docker pull ${image} && systemctl restart ${name}"
+    log "Deployed $name"
 }
 
 cmd_remove() {
@@ -144,15 +116,9 @@ cmd_remove() {
     [ -n "$name" ] || error "Usage: just app remove <app-name>"
     
     local yaml_file="$APPS_DIR/${name}.yaml"
-    local image=$(yaml_get "$yaml_file" "image")
     
     log "Stopping service on remote..."
     ssh "$REMOTE_HOST" "systemctl stop ${name} || true"
-    
-    if is_local_image "${image:-}"; then
-        log "Removing image on remote..."
-        ssh "$REMOTE_HOST" "docker rmi ${image} || true"
-    fi
     
     if [ -f "$yaml_file" ]; then
         read -p "Delete app config $yaml_file? [y/N] " -n 1 -r
@@ -176,13 +142,11 @@ cmd_list() {
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local database=$(yaml_get "$yaml_file" "database")
-        local type="registry"
-        is_local_image "$image" && type="local"
         
         local db_tag=""
         [ "$database" = "true" ] && db_tag=" [db]"
         
-        echo "  - $name ($type)${db_tag}"
+        echo "  - ${name}${db_tag}"
         echo "      image:   ${image}"
         echo "      domain:  ${domain:-not set}"
         echo "      port:    ${hostPort:-?}"
@@ -202,7 +166,12 @@ cmd_status() {
         ssh "$REMOTE_HOST" "systemctl status ${name}"
     else
         log "Remote app services:"
-        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(cue|home-theor-net|index-theor-net|do-what-you-cant|docker-auto-update)' || true"
+        local pattern
+        pattern=$(for yaml_file in "$APPS_DIR"/*.yaml; do
+            [ -f "$yaml_file" ] || continue
+            basename "$yaml_file" .yaml
+        done | paste -sd '|' -)
+        ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(${pattern}|docker-auto-update)' || true"
     fi
 }
 
@@ -215,8 +184,8 @@ cmd_help() {
 Usage: just app <command> [args]
 
 Commands:
-  create <name>      Create a new app config (defaults to local/name:latest)
-  deploy <name>      Push local image to server (only for local/* images)
+  create <name>      Create a new app config
+  deploy <name>      Pull latest image and restart on server
   remove <name>      Remove app from server (optionally delete config)
   list               List all apps
   logs <name>        Tail logs for an app
@@ -224,24 +193,15 @@ Commands:
   generate           Regenerate apps/apps.lock.nix from YAML files
 
 Environment:
-  REMOTE_HOST        SSH host (default: hetzner-personal-theoweb)
+  REMOTE_HOST        SSH host (default: hetzner-theor.net-web-1)
 
-Shortcuts:
-  just app-list              List all apps
-  just app-status [name]     Show status (all or specific app)
-  just app-logs <name>       Tail logs
-  just app-create <name>     Create new app config
-  just app-deploy <name>     Deploy local image
-  just app-generate          Regenerate Nix config
+Workflow:
+  1. just app create myapp     # create apps/myapp.yaml, edit image/domain
+  2. just app generate         # update NixOS config
+  3. just deploy               # apply NixOS config
+  4. just app deploy myapp     # force pull + restart (optional, auto-update runs every 5 min)
 
-Workflow for local apps:
-  1. docker build -t local/myapp:latest /path/to/app
-  2. just app create myapp     # or edit apps/myapp.yaml manually
-  3. just app generate         # update NixOS config
-  4. just app deploy myapp     # push image to server
-  5. just deploy               # apply NixOS config (new apps only)
-
-Registry apps (ghcr.io) are auto-updated every 5 minutes by the docker-auto-update timer.
+Apps are auto-updated every 5 minutes by the docker-auto-update timer.
 Check update logs: ssh $REMOTE_HOST 'journalctl -u docker-auto-update'
 EOF
 }
