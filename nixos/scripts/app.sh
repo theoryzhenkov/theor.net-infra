@@ -200,14 +200,12 @@ cmd_init_secrets() {
 
     log "Generating Age keypair for app: $name"
 
-    local key_file
-    key_file=$(mktemp)
-    age-keygen -o "$key_file" 2>/dev/null
+    local key_output
+    key_output=$(age-keygen 2>/dev/null)
     local public_key
-    public_key=$(grep "^# public key:" "$key_file" | sed 's/^# public key: //')
+    public_key=$(echo "$key_output" | grep "^# public key:" | sed 's/^# public key: //')
     local private_key
-    private_key=$(grep "^AGE-SECRET-KEY-" "$key_file")
-    rm -f "$key_file"
+    private_key=$(echo "$key_output" | grep "^AGE-SECRET-KEY-")
 
     [ -n "$public_key" ] && [ -n "$private_key" ] || error "Failed to generate Age keypair"
 
