@@ -23,6 +23,17 @@ yaml_get() {
     grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | tr -d '"'"'"
 }
 
+# Get canonical app name from YAML (falls back to filename)
+app_name() {
+    local yaml_file="$1"
+    local app=$(yaml_get "$yaml_file" "app")
+    if [ -n "$app" ]; then
+        echo "$app"
+    else
+        basename "$yaml_file" .yaml
+    fi
+}
+
 generate_nix_config() {
     log "Generating apps/apps.lock.nix..."
     
@@ -35,7 +46,7 @@ NIXHEAD
 
     for yaml_file in "$APPS_DIR"/*.yaml; do
         [ -f "$yaml_file" ] || continue
-        local name=$(basename "$yaml_file" .yaml)
+        local name=$(app_name "$yaml_file")
         local image=$(yaml_get "$yaml_file" "image")
         local domain=$(yaml_get "$yaml_file" "domain")
         local containerPort=$(yaml_get "$yaml_file" "containerPort")
@@ -93,6 +104,7 @@ cmd_create() {
     
     # Default app.yaml  
     cat > "$yaml_file" << EOF
+app: ${name}
 image: ghcr.io/theoryzhenkov/${name}/${name}:latest
 containerPort: 8000
 hostPort: ${port}
@@ -110,12 +122,13 @@ cmd_deploy() {
     local yaml_file="$APPS_DIR/${name}.yaml"
     [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
     
+    local app=$(app_name "$yaml_file")
     local image=$(yaml_get "$yaml_file" "image")
     [ -n "$image" ] || error "No 'image' specified in $yaml_file"
     
-    log "Pulling latest image and restarting $name on $REMOTE_HOST..."
-    ssh "$REMOTE_HOST" "docker pull ${image} && systemctl restart ${name}"
-    log "Deployed $name"
+    log "Pulling latest image and restarting $app on $REMOTE_HOST..."
+    ssh "$REMOTE_HOST" "docker pull ${image} && systemctl restart ${app}"
+    log "Deployed $app"
 }
 
 cmd_remove() {
@@ -123,9 +136,10 @@ cmd_remove() {
     [ -n "$name" ] || error "Usage: just app remove <app-name>"
     
     local yaml_file="$APPS_DIR/${name}.yaml"
+    local app=$(app_name "$yaml_file")
     
     log "Stopping service on remote..."
-    ssh "$REMOTE_HOST" "systemctl stop ${name} || true"
+    ssh "$REMOTE_HOST" "systemctl stop ${app} || true"
     
     if [ -f "$yaml_file" ]; then
         read -p "Delete app config $yaml_file? [y/N] " -n 1 -r
@@ -144,7 +158,7 @@ cmd_list() {
     log "Apps:"
     for yaml_file in "$APPS_DIR"/*.yaml; do
         [ -f "$yaml_file" ] || continue
-        local name=$(basename "$yaml_file" .yaml)
+        local name=$(app_name "$yaml_file")
         local image=$(yaml_get "$yaml_file" "image")
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
@@ -167,19 +181,26 @@ cmd_logs() {
     local name="${1:-}"
     [ -n "$name" ] || error "Usage: just app logs <app-name>"
     
-    ssh "$REMOTE_HOST" "journalctl -u ${name} -f"
+    local yaml_file="$APPS_DIR/${name}.yaml"
+    [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
+    local app=$(app_name "$yaml_file")
+    
+    ssh "$REMOTE_HOST" "journalctl -u ${app} -f"
 }
 
 cmd_status() {
     local name="${1:-}"
     if [ -n "$name" ]; then
-        ssh "$REMOTE_HOST" "systemctl status ${name}"
+        local yaml_file="$APPS_DIR/${name}.yaml"
+        [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
+        local app=$(app_name "$yaml_file")
+        ssh "$REMOTE_HOST" "systemctl status ${app}"
     else
         log "Remote app services:"
         local pattern
         pattern=$(for yaml_file in "$APPS_DIR"/*.yaml; do
             [ -f "$yaml_file" ] || continue
-            basename "$yaml_file" .yaml
+            app_name "$yaml_file"
         done | paste -sd '|' -)
         ssh "$REMOTE_HOST" "systemctl list-units --type=service --no-pager | grep -E '(${pattern}|docker-auto-update)' || true"
     fi
@@ -195,10 +216,11 @@ cmd_init_secrets() {
 
     local yaml_file="$APPS_DIR/${name}.yaml"
     [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
+    local app=$(app_name "$yaml_file")
 
     command -v age-keygen >/dev/null 2>&1 || error "age-keygen not found. Install age: nix-shell -p age"
 
-    log "Generating Age keypair for app: $name"
+    log "Generating Age keypair for app: $app"
 
     local key_output
     key_output=$(age-keygen 2>/dev/null)
@@ -210,7 +232,7 @@ cmd_init_secrets() {
     [ -n "$public_key" ] && [ -n "$private_key" ] || error "Failed to generate Age keypair"
 
     echo ""
-    echo "Age keypair generated for $name:"
+    echo "Age keypair generated for $app:"
     echo ""
     echo "  Public key:  $public_key"
     echo "  Private key: $private_key"
@@ -218,29 +240,18 @@ cmd_init_secrets() {
     log "Next steps:"
     echo "  1. Add the private key to infra SOPS secrets:"
     echo "       sops nixos/secrets/secrets.enc.yaml"
-    echo "       # Add: age_key_${name}: ${private_key}"
+    echo "       # Add: age_key_${app}: ${private_key}"
     echo ""
-    echo "  2. In the app repo, create .sops.yaml:"
-    echo "       keys:"
-    echo "         - &app ${public_key}"
-    echo "       creation_rules:"
-    echo "         - path_regex: secrets/.*\\.enc\\.yaml\$"
-    echo "           key_groups:"
-    echo "             - age:"
-    echo "                 - *app"
+    echo "  2. In the app repo, configure .sops.yaml with the public key:"
+    echo "       &app ${public_key}"
     echo ""
     echo "  3. Create and encrypt secrets:"
     echo "       sops secrets/production.enc.yaml"
     echo ""
-    echo "  4. CI: push encrypted file as OCI artifact:"
-    echo "       echo \"\$GHCR_TOKEN\" | crane auth login ghcr.io -u \"\$GHCR_USER\" --password-stdin"
-    echo "       crane append -f <(tar cf - secrets/production.enc.yaml) \\"
-    echo "         -t ghcr.io/theoryzhenkov/${name}/${name}-secrets:production"
+    echo "  4. Add 'secrets' field to $yaml_file:"
+    echo "       secrets: ghcr.io/theoryzhenkov/${app}/${app}-secrets:production"
     echo ""
-    echo "  5. Add 'secrets' field to $yaml_file:"
-    echo "       secrets: ghcr.io/theoryzhenkov/${name}/${name}-secrets:production"
-    echo ""
-    echo "  6. Regenerate and deploy:"
+    echo "  5. Regenerate and deploy:"
     echo "       just app generate && just deploy"
 }
 
@@ -252,12 +263,13 @@ cmd_secrets_push() {
     local yaml_file="$APPS_DIR/${name}.yaml"
     [ -f "$yaml_file" ] || error "App '$name' not found at $yaml_file"
     [ -f "$file" ] || error "File not found: $file"
+    local app=$(app_name "$yaml_file")
 
-    log "Pushing encrypted secrets for $name to $REMOTE_HOST..."
-    ssh "$REMOTE_HOST" "mkdir -p /var/lib/app-secrets/${name}"
-    scp "$file" "$REMOTE_HOST:/var/lib/app-secrets/${name}/secrets.enc.yaml"
-    log "Secrets pushed. Restarting $name..."
-    ssh "$REMOTE_HOST" "systemctl restart ${name}"
+    log "Pushing encrypted secrets for $app to $REMOTE_HOST..."
+    ssh "$REMOTE_HOST" "mkdir -p /var/lib/app-secrets/${app}"
+    scp "$file" "$REMOTE_HOST:/var/lib/app-secrets/${app}/secrets.enc.yaml"
+    log "Secrets pushed. Restarting $app..."
+    ssh "$REMOTE_HOST" "systemctl restart ${app}"
     log "Done"
 }
 

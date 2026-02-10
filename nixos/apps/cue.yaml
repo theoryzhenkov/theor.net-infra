@@ -1,3 +1,4 @@
+app: cue
 image: ghcr.io/theoryzhenkov/cue/cue:latest
 containerPort: 3000
 hostPort: 8102
