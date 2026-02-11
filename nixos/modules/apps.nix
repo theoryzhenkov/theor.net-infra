@@ -11,10 +11,10 @@ let
 
   # App subsets
   dbApps = lib.filterAttrs (_: app: app.database or false) appsGenerated;
-  secretsApps = lib.filterAttrs (_: app: app ? secrets) appsGenerated;
+  secretsApps = lib.filterAttrs (_: app: app.secrets or false) appsGenerated;
 
   hasDatabase = app: app.database or false;
-  hasSecrets = app: app ? secrets;
+  hasSecrets = app: app.secrets or false;
 
   autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: app: ''
@@ -30,19 +30,6 @@ let
       else
         echo "${name}: image pull failed, skipping"
       fi
-    '' + lib.optionalString (hasSecrets app) ''
-      # Check secrets artifact updates
-      SECRETS_DIR="/var/lib/app-secrets/${name}"
-      mkdir -p "$SECRETS_DIR"
-      OLD_DIGEST=""
-      [ -f "$SECRETS_DIR/digest" ] && OLD_DIGEST=$(cat "$SECRETS_DIR/digest")
-      NEW_DIGEST=$(${pkgs.crane}/bin/crane digest "${app.secrets}" 2>/dev/null || echo "")
-      if [ -n "$NEW_DIGEST" ] && [ "$OLD_DIGEST" != "$NEW_DIGEST" ]; then
-        echo "${name}: secrets artifact updated"
-        echo "$NEW_DIGEST" > "$SECRETS_DIR/digest"
-        RESTART_NEEDED=1
-      fi
-    '' + ''
       if [ -n "$RESTART_NEEDED" ]; then
         echo "${name}: restarting..."
         ${pkgs.systemd}/bin/systemctl restart "${name}"
@@ -57,6 +44,9 @@ let
       wantsDb = hasDatabase app;
       wantsSecrets = hasSecrets app;
 
+      # Encrypted secrets file from the infra repo (copied to Nix store at build time)
+      secretsFile = ../apps/${name}/secrets.enc.yaml;
+
       dbDeps = lib.optionals wantsDb [
         "postgresql.service"
         "pg-set-passwords.service"
@@ -70,28 +60,11 @@ let
         : > "$SECRETS_DIR/docker.env"
       '' + lib.optionalString wantsSecrets ''
 
-        # Pull encrypted secrets from OCI artifact
-        echo "Pulling secrets artifact for ${name}..."
-        TMPDIR=$(mktemp -d)
-        ${pkgs.crane}/bin/crane export "${app.secrets}" - | tar xf - -C "$TMPDIR"
-        ENCRYPTED=$(find "$TMPDIR" -name '*.enc.yaml' -type f -print -quit)
-        if [ -z "$ENCRYPTED" ]; then
-          echo "ERROR: No .enc.yaml found in secrets artifact for ${name}"
-          rm -rf "$TMPDIR"
-          exit 1
-        fi
-        cp "$ENCRYPTED" "$SECRETS_DIR/secrets.enc.yaml"
-        rm -rf "$TMPDIR"
-
-        # Decrypt app secrets and write to env file
+        # Decrypt app secrets from infra repo (encrypted file is in the Nix store)
         echo "Decrypting secrets for ${name}..."
-        SOPS_AGE_KEY="$(cat ${config.sops.secrets."age_key_${name}".path})" \
+        SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt \
           ${pkgs.sops}/bin/sops --decrypt --input-type yaml --output-type dotenv \
-          "$SECRETS_DIR/secrets.enc.yaml" >> "$SECRETS_DIR/docker.env"
-        rm -f "$SECRETS_DIR/secrets.enc.yaml"
-
-        # Store current artifact digest for auto-update tracking
-        ${pkgs.crane}/bin/crane digest "${app.secrets}" > "$SECRETS_DIR/digest" 2>/dev/null || true
+          ${secretsFile} >> "$SECRETS_DIR/docker.env"
       '' + lib.optionalString wantsDb ''
 
         DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
@@ -159,12 +132,7 @@ in
     lib.nameValuePair "db_password_${name}" {
       sopsFile = ../secrets/secrets.enc.yaml;
     }
-  ) dbApps
-  // lib.mapAttrs' (name: _:
-    lib.nameValuePair "age_key_${name}" {
-      sopsFile = ../secrets/secrets.enc.yaml;
-    }
-  ) secretsApps;
+  ) dbApps;
 
   # Generate /root/.docker/config.json on system activation
   system.activationScripts.docker-ghcr-login = lib.stringAfter [ "setupSecrets" ] ''
@@ -231,9 +199,9 @@ in
       };
     };
 
-  # Auto-update timer: checks for new registry images and secrets every 5 minutes
+  # Auto-update timer: checks for new Docker images every 5 minutes
   systemd.timers.docker-auto-update = {
-    description = "Periodically check for Docker image and secrets updates";
+    description = "Periodically check for Docker image updates";
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "2min";
