@@ -23,6 +23,12 @@ yaml_get() {
     grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | tr -d '"'"'"
 }
 
+# Parse nested YAML value (one level deep, e.g. depends.database)
+yaml_get_nested() {
+    local file="$1" section="$2" key="$3"
+    sed -n "/^${section}:/,/^[^ ]/p" "$file" | grep "^  ${key}:" | sed "s/^  ${key}:[[:space:]]*//" | tr -d '"'"'"
+}
+
 # Get canonical app name from YAML (required field)
 app_name() {
     local yaml_file="$1"
@@ -58,7 +64,7 @@ NIXHEAD
         local containerPort=$(yaml_get "$yaml_file" "containerPort")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local default_val=$(yaml_get "$yaml_file" "default")
-        local database=$(yaml_get "$yaml_file" "database")
+        local depends_database=$(yaml_get_nested "$yaml_file" "depends" "database")
         
         [ -n "$image" ] || error "Missing required 'image' field in $yaml_file"
         [ -n "$domain" ] || error "Missing required 'domain' field in $yaml_file"
@@ -70,9 +76,9 @@ NIXHEAD
             default_line=$'\n    default = true;'
         fi
 
-        local database_line=""
-        if [ "$database" = "true" ]; then
-            database_line=$'\n    database = true;'
+        local depends_line=""
+        if [ -n "$depends_database" ]; then
+            depends_line=$'\n    depends.database = "'"${depends_database}"'";'
         fi
 
         # Detect secrets by convention: secrets.enc.yaml exists alongside app.yaml
@@ -86,7 +92,7 @@ NIXHEAD
     image = "${image}";
     containerPort = ${containerPort};
     hostPort = ${hostPort};
-    domain = "${domain}";${default_line}${database_line}${secrets_line}
+    domain = "${domain}";${default_line}${depends_line}${secrets_line}
   };
 EOF
     done
@@ -123,6 +129,7 @@ EOF
 
     log "Created $yaml_file"
     log "Edit it, then run: just app generate && just deploy"
+    log "To add a database: add 'depends:\\n  database: postgresql' to $yaml_file"
     log "To add secrets: just app secrets $name"
 }
 
@@ -177,10 +184,10 @@ cmd_list() {
         local image=$(yaml_get "$yaml_file" "image")
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
-        local database=$(yaml_get "$yaml_file" "database")
+        local depends_database=$(yaml_get_nested "$yaml_file" "depends" "database")
         
         local db_tag=""
-        [ "$database" = "true" ] && db_tag=" [db]"
+        [ -n "$depends_database" ] && db_tag=" [db:${depends_database}]"
         local secrets_tag=""
         [ -f "${app_dir}secrets.enc.yaml" ] && secrets_tag=" [secrets]"
         
@@ -262,6 +269,16 @@ Workflow:
   2. just app generate         # update NixOS config
   3. just deploy               # apply NixOS config
   4. just app deploy myapp     # force pull + restart (optional, auto-update runs every 5 min)
+
+Dependencies:
+  To give an app a PostgreSQL database, add to its app.yaml:
+    depends:
+      database: postgresql
+
+  The database, user, and password are provisioned automatically.
+  DATABASE_URL is injected as an env var at container start.
+  No manual secret provisioning required — passwords are derived
+  deterministically from the server's age key.
 
 Secrets:
   Secrets are sops-encrypted files in the infra repo at apps/<name>/secrets.enc.yaml.

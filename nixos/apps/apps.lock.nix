@@ -7,7 +7,7 @@
     containerPort = 3000;
     hostPort = 8102;
     domain = "cue.theor.net";
-    database = true;
+    depends.database = "postgresql";
     secrets = true;
   };
   home-theor-net = {

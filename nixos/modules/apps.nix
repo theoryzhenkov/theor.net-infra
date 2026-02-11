@@ -10,11 +10,18 @@ let
   appsGenerated = import ../apps/apps.lock.nix;
 
   # App subsets
-  dbApps = lib.filterAttrs (_: app: app.database or false) appsGenerated;
-  secretsApps = lib.filterAttrs (_: app: app.secrets or false) appsGenerated;
+  dbApps = lib.filterAttrs (_: app: hasDatabase app) appsGenerated;
+  secretsApps = lib.filterAttrs (_: app: hasSecrets app) appsGenerated;
 
-  hasDatabase = app: app.database or false;
+  hasDatabase = app: (app.depends.database or null) == "postgresql";
   hasSecrets = app: app.secrets or false;
+
+  # Derive a deterministic DB password from the server's age key + app name.
+  # Both pg-set-passwords and the Docker start script use the same derivation,
+  # so they always agree without any external secret provisioning.
+  deriveDbPassword = name: ''
+    echo -n "db-password:${name}" | ${pkgs.openssl}/bin/openssl dgst -sha256 -hmac "$(cat /var/lib/sops-nix/key.txt)" -r | cut -d' ' -f1
+  '';
 
   autoUpdateScript = pkgs.writeShellScript "docker-auto-update" ''
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: app: ''
@@ -67,7 +74,7 @@ let
           ${secretsFile} >> "$SECRETS_DIR/docker.env"
       '' + lib.optionalString wantsDb ''
 
-        DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
+        DB_PASS=$(${deriveDbPassword name})
         echo "DATABASE_URL=postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}" >> "$SECRETS_DIR/docker.env"
       '' + ''
 
@@ -128,11 +135,7 @@ in
     ghcr_token = {
       sopsFile = ../secrets/secrets.enc.yaml;
     };
-  } // lib.mapAttrs' (name: _:
-    lib.nameValuePair "db_password_${name}" {
-      sopsFile = ../secrets/secrets.enc.yaml;
-    }
-  ) dbApps;
+  };
 
   # Generate /root/.docker/config.json on system activation
   system.activationScripts.docker-ghcr-login = lib.stringAfter [ "setupSecrets" ] ''
@@ -178,7 +181,7 @@ in
       };
     }
     // lib.optionalAttrs (dbApps != { }) {
-      # Set passwords for app database users from SOPS secrets
+      # Set passwords for app database users (derived deterministically from the server's age key)
       pg-set-passwords = {
         description = "Set PostgreSQL passwords for app databases";
         after = [ "postgresql.service" ];
@@ -191,7 +194,7 @@ in
         };
 
         script = lib.concatStringsSep "\n" (lib.mapAttrsToList (name: _: ''
-          DB_PASS=$(cat ${config.sops.secrets."db_password_${name}".path})
+          DB_PASS=$(${deriveDbPassword name})
           ${pkgs.util-linux}/bin/runuser -u postgres -- \
             ${config.services.postgresql.package}/bin/psql -c \
             "ALTER USER \"${name}\" PASSWORD '$DB_PASS';"
