@@ -70,6 +70,12 @@ in
     mode = "0440";
   };
 
+  # Ensure headscale starts after authelia is up and ACME has issued a real cert
+  systemd.services.headscale = {
+    after = [ "acme-auth.theor.net.service" "authelia.service" ];
+    wants = [ "authelia.service" ];
+  };
+
   # Headscale CLI available system-wide
   environment.systemPackages = [ config.services.headscale.package ];
 

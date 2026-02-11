@@ -25,8 +25,8 @@ let
 
   usersFile = pkgs.writeText "authelia-users.yaml" (builtins.toJSON { inherit users; });
 
-  # Static configuration (secrets are injected at runtime via environment variables)
-  autheliaConfig = pkgs.writeText "authelia-config.yml" (builtins.toJSON {
+  # Base config template — secrets are injected at runtime via the start script
+  configTemplate = pkgs.writeText "authelia-config-template.json" (builtins.toJSON {
     theme = "auto";
 
     server = {
@@ -70,7 +70,6 @@ let
         {
           domain = "theor.net";
           authelia_url = "https://${domain}";
-          default_redirection_url = "https://${domain}";
         }
       ];
     };
@@ -101,6 +100,9 @@ let
           };
         };
 
+        # Placeholder — overridden at runtime with the RSA private key
+        jwks = [];
+
         clients = [
           {
             client_id = "headscale";
@@ -119,26 +121,44 @@ let
             userinfo_signed_response_alg = "none";
             token_endpoint_auth_method = "client_secret_basic";
             claims_policy = "headscale";
+            # Placeholder — overridden at runtime
+            client_secret = "PLACEHOLDER";
           }
         ];
       };
     };
   });
 
-  # Startup script: injects SOPS secrets into config and launches authelia
+  # Start script: reads SOPS secrets, merges them into the config via jq, launches authelia
   startScript = pkgs.writeShellScript "authelia-start" ''
     set -euo pipefail
 
-    # Authelia reads AUTHELIA_* env vars as config overrides
-    export AUTHELIA_JWT_SECRET="$(cat ${config.sops.secrets.authelia_jwt_secret.path})"
-    export AUTHELIA_SESSION_SECRET="$(cat ${config.sops.secrets.authelia_session_secret.path})"
-    export AUTHELIA_STORAGE_ENCRYPTION_KEY="$(cat ${config.sops.secrets.authelia_storage_encryption_key.path})"
-    export AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET="$(cat ${config.sops.secrets.authelia_oidc_hmac_secret.path})"
-    export AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY_FILE="${config.sops.secrets.authelia_oidc_private_key.path}"
-    export AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET="$(cat ${config.sops.secrets.headscale_oidc_client_secret.path})"
+    JWT_SECRET="$(cat ${config.sops.secrets.authelia_jwt_secret.path})"
+    SESSION_SECRET="$(cat ${config.sops.secrets.authelia_session_secret.path})"
+    STORAGE_KEY="$(cat ${config.sops.secrets.authelia_storage_encryption_key.path})"
+    HMAC_SECRET="$(cat ${config.sops.secrets.authelia_oidc_hmac_secret.path})"
+    OIDC_KEY="$(cat ${config.sops.secrets.authelia_oidc_private_key.path})"
+    CLIENT_SECRET="$(cat ${config.sops.secrets.headscale_oidc_client_secret.path})"
 
-    exec ${pkgs.authelia}/bin/authelia \
-      --config ${autheliaConfig}
+    ${pkgs.jq}/bin/jq \
+      --arg jwt "$JWT_SECRET" \
+      --arg session "$SESSION_SECRET" \
+      --arg storage "$STORAGE_KEY" \
+      --arg hmac "$HMAC_SECRET" \
+      --arg oidc_key "$OIDC_KEY" \
+      --arg client_secret "$CLIENT_SECRET" \
+      '
+        .identity_validation.reset_password.jwt_secret = $jwt |
+        .session.secret = $session |
+        .storage.encryption_key = $storage |
+        .identity_providers.oidc.hmac_secret = $hmac |
+        .identity_providers.oidc.jwks = [{"key_id": "main", "algorithm": "RS256", "use": "sig", "key": $oidc_key}] |
+        .identity_providers.oidc.clients[0].client_secret = ("$plaintext$" + $client_secret)
+      ' ${configTemplate} > ${dataDir}/config.json
+
+    chmod 600 ${dataDir}/config.json
+
+    exec ${pkgs.authelia}/bin/authelia --config ${dataDir}/config.json
   '';
 in
 {
