@@ -184,8 +184,8 @@ in
       # Set passwords for app database users (derived deterministically from the server's age key)
       pg-set-passwords = {
         description = "Set PostgreSQL passwords for app databases";
-        after = [ "postgresql.service" ];
-        requires = [ "postgresql.service" ];
+        after = [ "postgresql.service" "postgresql-setup.service" ];
+        requires = [ "postgresql.service" "postgresql-setup.service" ];
         wantedBy = [ "multi-user.target" ];
 
         serviceConfig = {
