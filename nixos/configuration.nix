@@ -7,6 +7,8 @@
     ./modules/apps.nix
     ./modules/postgres.nix
     ./modules/pg-backup.nix
+    ./modules/authelia.nix
+    ./modules/headscale.nix
   ];
 
   system.stateVersion = "24.11";
@@ -20,6 +22,7 @@
     firewall = {
       enable = true;
       allowedTCPPorts = [ 22 80 443 ];
+      allowedUDPPorts = [ 3478 ]; # STUN for Headscale DERP relay
     };
   };
 

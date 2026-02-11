@@ -39,6 +39,13 @@ resource "hcloud_firewall" "web" {
     port       = "443"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
+
+  rule {
+    direction  = "in"
+    protocol   = "udp"
+    port       = "3478"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
 }
 
 resource "hcloud_primary_ip" "web_ipv4" {
@@ -150,6 +157,24 @@ resource "porkbun_dns_record" "theor_net_leaves_wildcard" {
 resource "porkbun_dns_record" "theor_net_home" {
   domain   = "theor.net"
   name     = "home"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
+}
+
+resource "porkbun_dns_record" "theor_net_auth" {
+  domain   = "theor.net"
+  name     = "auth"
+  type     = "A"
+  content  = hcloud_primary_ip.web_ipv4.ip_address
+  ttl      = 600
+  priority = 0
+}
+
+resource "porkbun_dns_record" "theor_net_headscale" {
+  domain   = "theor.net"
+  name     = "headscale"
   type     = "A"
   content  = hcloud_primary_ip.web_ipv4.ip_address
   ttl      = 600
