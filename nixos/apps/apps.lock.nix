@@ -22,4 +22,11 @@
     hostPort = 8100;
     domain = "theor.net";
   };
+  private-index-theor-net = {
+    image = "ghcr.io/theoryzhenkov/private-index.theor.net/private-index-theor-net:latest";
+    containerPort = 80;
+    hostPort = 8100;
+    domain = "private.theor.net";
+    network = "tailscale";
+  };
 }
