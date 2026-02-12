@@ -23,9 +23,9 @@
     domain = "theor.net";
   };
   private-index-theor-net = {
-    image = "ghcr.io/theoryzhenkov/private-index.theor.net/private-index-theor-net:latest";
+    image = "ghcr.io/theoryzhenkov/private.index.theor.net/private-index-theor-net:latest";
     containerPort = 80;
-    hostPort = 8100;
+    hostPort = 8200;
     domain = "private.theor.net";
     network = "tailscale";
   };

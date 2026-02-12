@@ -12,9 +12,16 @@ let
   # App subsets
   dbApps = lib.filterAttrs (_: app: hasDatabase app) appsGenerated;
   secretsApps = lib.filterAttrs (_: app: hasSecrets app) appsGenerated;
+  tailscaleApps = lib.filterAttrs (_: app: isTailscale app) appsGenerated;
 
   hasDatabase = app: (app.depends.database or null) == "postgresql";
   hasSecrets = app: app.secrets or false;
+  isTailscale = app: (app.network or null) == "tailscale";
+
+  # The server's Tailscale IP (assigned by Headscale via sequential allocation).
+  # Used to register DNS overrides so tailnet peers route to tailscale-only apps
+  # through the tunnel instead of the public internet.
+  serverTailscaleIp = "100.64.0.2";
 
   # Derive a deterministic DB password from the server's age key + app name.
   # Both pg-set-passwords and the Docker start script use the same derivation,
@@ -111,8 +118,6 @@ let
         };
       };
     };
-
-  isTailscale = app: (app.network or null) == "tailscale";
 
   mkProxyVhost = name: app: {
     "${app.domain}" = {
@@ -221,4 +226,15 @@ in
   };
 
   services.nginx.virtualHosts = lib.mkMerge (lib.mapAttrsToList mkProxyVhost appsGenerated);
+
+  # Register Headscale DNS overrides so tailnet peers resolve tailscale-only
+  # domains to the server's Tailscale IP. This makes traffic route through the
+  # tunnel, so nginx sees a Tailscale source IP and the allow rule passes.
+  # Public DNS still points to the server's public IP (for ACME HTTP-01).
+  services.headscale.settings.dns.extra_records =
+    lib.mapAttrsToList (_: app: {
+      name = app.domain;
+      type = "A";
+      value = serverTailscaleIp;
+    }) tailscaleApps;
 }

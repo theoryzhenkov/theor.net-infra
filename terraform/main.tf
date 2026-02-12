@@ -191,8 +191,8 @@ resource "porkbun_dns_record" "theor_net_root_ipv6" {
 }
 
 resource "porkbun_dns_record" "private_theor_net_root" {
-  domain   = "private.theor.net"
-  name     = ""
+  domain   = "theor.net"
+  name     = "private"
   type     = "A"
   content  = hcloud_primary_ip.web_ipv4.ip_address
   ttl      = 600
@@ -200,8 +200,8 @@ resource "porkbun_dns_record" "private_theor_net_root" {
 }
 
 resource "porkbun_dns_record" "private_theor_net_root_ipv6" {
-  domain   = "private.theor.net"
-  name     = ""
+  domain   = "theor.net"
+  name     = "private"
   type     = "AAAA"
   content  = hcloud_server.web.ipv6_address
   ttl      = 600
