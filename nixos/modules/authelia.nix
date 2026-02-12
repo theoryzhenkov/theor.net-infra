@@ -15,10 +15,10 @@ let
   # To generate a password hash locally:
   #   nix run "nixpkgs#authelia" -- crypto hash generate argon2 --password 'YOUR_PASSWORD'
   users = {
-    theo = {
-      displayname = "Theo";
-      password = "$argon2id$v=19$m=65536,t=3,p=4$nLMn85yF5hVKj7yevhbr/w$qJzHpsBBoXfkKuOKZQUNAKIywnTAZeyxU/+GO4z7ATI";
-      email = "theo@theor.net";
+    admin = {
+      displayname = "admin";
+      password = "$argon2id$v=19$m=65536,t=3,p=4$qb1FkNQWcf4q+IakuvXbJQ$PfbLFJWvYrjaeYYAk7X9a+fLb4x1Lk6I2lXatSD66xs";
+      email = "account+authelia.admin@theor.net";
       groups = [ "admins" ];
     };
   };
