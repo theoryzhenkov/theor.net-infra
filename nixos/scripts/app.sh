@@ -65,6 +65,7 @@ NIXHEAD
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local default_val=$(yaml_get "$yaml_file" "default")
         local depends_database=$(yaml_get_nested "$yaml_file" "depends" "database")
+        local network=$(yaml_get "$yaml_file" "network")
         
         [ -n "$image" ] || error "Missing required 'image' field in $yaml_file"
         [ -n "$domain" ] || error "Missing required 'domain' field in $yaml_file"
@@ -81,6 +82,11 @@ NIXHEAD
             depends_line=$'\n    depends.database = "'"${depends_database}"'";'
         fi
 
+        local network_line=""
+        if [ -n "$network" ]; then
+            network_line=$'\n    network = "'"${network}"'";'
+        fi
+
         # Detect secrets by convention: secrets.enc.yaml exists alongside app.yaml
         local secrets_line=""
         if [ -f "${app_dir}secrets.enc.yaml" ]; then
@@ -92,7 +98,7 @@ NIXHEAD
     image = "${image}";
     containerPort = ${containerPort};
     hostPort = ${hostPort};
-    domain = "${domain}";${default_line}${depends_line}${secrets_line}
+    domain = "${domain}";${default_line}${depends_line}${network_line}${secrets_line}
   };
 EOF
     done
@@ -130,6 +136,7 @@ EOF
     log "Created $yaml_file"
     log "Edit it, then run: just app generate && just deploy"
     log "To add a database: add 'depends:\\n  database: postgresql' to $yaml_file"
+    log "To restrict to Tailscale: add 'network: tailscale' to $yaml_file"
     log "To add secrets: just app secrets $name"
 }
 
@@ -185,13 +192,16 @@ cmd_list() {
         local domain=$(yaml_get "$yaml_file" "domain")
         local hostPort=$(yaml_get "$yaml_file" "hostPort")
         local depends_database=$(yaml_get_nested "$yaml_file" "depends" "database")
+        local network=$(yaml_get "$yaml_file" "network")
         
         local db_tag=""
         [ -n "$depends_database" ] && db_tag=" [db:${depends_database}]"
         local secrets_tag=""
         [ -f "${app_dir}secrets.enc.yaml" ] && secrets_tag=" [secrets]"
+        local network_tag=""
+        [ -n "$network" ] && network_tag=" [${network}]"
         
-        echo "  - ${name}${db_tag}${secrets_tag}"
+        echo "  - ${name}${db_tag}${secrets_tag}${network_tag}"
         echo "      image:   ${image}"
         echo "      domain:  ${domain:-not set}"
         echo "      port:    ${hostPort:-?}"
@@ -279,6 +289,15 @@ Dependencies:
   DATABASE_URL is injected as an env var at container start.
   No manual secret provisioning required — passwords are derived
   deterministically from the server's age key.
+
+Network:
+  To restrict an app to Tailscale peers only, add to its app.yaml:
+    network: tailscale
+
+  The app still gets a normal nginx vhost with ACME/TLS, but nginx
+  only allows connections from Tailscale IPs (100.64.0.0/10).
+  Non-Tailscale clients receive a 403. You still need a DNS record
+  pointing the domain to the server's public IP (for ACME to work).
 
 Secrets:
   Secrets are sops-encrypted files in the infra repo at apps/<name>/secrets.enc.yaml.

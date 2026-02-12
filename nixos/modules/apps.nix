@@ -112,6 +112,8 @@ let
       };
     };
 
+  isTailscale = app: (app.network or null) == "tailscale";
+
   mkProxyVhost = name: app: {
     "${app.domain}" = {
       enableACME = true;
@@ -121,6 +123,11 @@ let
       locations."/" = {
         proxyPass = "http://127.0.0.1:${toString app.hostPort}";
         proxyWebsockets = true;
+      } // lib.optionalAttrs (isTailscale app) {
+        extraConfig = ''
+          allow 100.64.0.0/10;
+          deny all;
+        '';
       };
     };
   };
