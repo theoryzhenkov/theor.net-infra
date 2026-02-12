@@ -70,10 +70,26 @@ in
     mode = "0440";
   };
 
-  # Ensure headscale starts after authelia is up and ACME has issued a real cert
+  # Ensure headscale starts after authelia is up and ACME has issued a real cert.
+  # The preStart polls until the OIDC discovery endpoint is reachable with valid TLS,
+  # which handles the first-deploy case where ACME hasn't issued a cert yet.
   systemd.services.headscale = {
-    after = [ "acme-auth.theor.net.service" "authelia.service" ];
+    after = [ "acme-auth.theor.net.service" "authelia.service" "nginx.service" ];
     wants = [ "authelia.service" ];
+    preStart = lib.mkBefore ''
+      for i in $(${pkgs.coreutils}/bin/seq 1 60); do
+        if ${pkgs.curl}/bin/curl -sf https://auth.theor.net/.well-known/openid-configuration > /dev/null 2>&1; then
+          echo "Authelia OIDC endpoint is ready"
+          break
+        fi
+        if [ "$i" -eq 60 ]; then
+          echo "Timeout waiting for Authelia OIDC endpoint" >&2
+          exit 1
+        fi
+        echo "Waiting for Authelia OIDC endpoint... ($i/60)"
+        ${pkgs.coreutils}/bin/sleep 2
+      done
+    '';
   };
 
   # Headscale CLI available system-wide

@@ -9,6 +9,7 @@
     ./modules/pg-backup.nix
     ./modules/authelia.nix
     ./modules/headscale.nix
+    ./modules/tailscale.nix
   ];
 
   system.stateVersion = "24.11";
