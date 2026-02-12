@@ -237,4 +237,13 @@ in
       type = "A";
       value = serverTailscaleIp;
     }) tailscaleApps;
+
+  # Route *.theor.net DNS queries through the Tailscale DNS proxy on clients.
+  # Without this, macOS only routes MagicDNS queries (*.ts.theor.net) through
+  # Tailscale, so extra_records for other domains are never consulted.
+  # The proxy checks extra_records first (returning the Tailscale IP), then
+  # forwards non-overridden names to these upstream resolvers as normal.
+  services.headscale.settings.dns.nameservers.split = lib.mkIf (tailscaleApps != { }) {
+    "theor.net" = [ "1.1.1.1" "9.9.9.9" ];
+  };
 }
