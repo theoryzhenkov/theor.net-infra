@@ -8,6 +8,9 @@
     options = [ "defaults" "nofail" ];
   };
 
+  # Allow Docker containers to reach PostgreSQL through the bridge network
+  networking.firewall.interfaces.docker0.allowedTCPPorts = [ 5432 ];
+
   services.postgresql = {
     enable = true;
     package = pkgs.postgresql_16;

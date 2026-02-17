@@ -29,4 +29,12 @@
     domain = "private.theor.net";
     network = "tailscale";
   };
+  schedule-theor-net = {
+    image = "calcom/cal.com:latest";
+    containerPort = 3000;
+    hostPort = 8103;
+    domain = "schedule.theor.net";
+    depends.database = "postgresql";
+    secrets = true;
+  };
 }

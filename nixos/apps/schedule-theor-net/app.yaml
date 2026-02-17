@@ -1,0 +1,5 @@
+app: schedule-theor-net
+image: ghcr.io/theoryzhenkov/schedule.theor.net/schedule-theor-net:latest
+containerPort: 3000
+hostPort: 8103
+domain: schedule.theor.net

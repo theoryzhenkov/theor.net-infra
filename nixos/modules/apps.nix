@@ -82,7 +82,9 @@ let
       '' + lib.optionalString wantsDb ''
 
         DB_PASS=$(${deriveDbPassword name})
-        echo "DATABASE_URL=postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}" >> "$SECRETS_DIR/docker.env"
+        DB_URL="postgresql://${name}:$DB_PASS@host.docker.internal:5432/${name}"
+        echo "DATABASE_URL=$DB_URL" >> "$SECRETS_DIR/docker.env"
+        echo "DATABASE_DIRECT_URL=$DB_URL" >> "$SECRETS_DIR/docker.env"
       '' + ''
 
         exec ${pkgs.docker}/bin/docker run --rm \
