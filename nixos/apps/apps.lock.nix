@@ -30,11 +30,10 @@
     network = "tailscale";
   };
   schedule-theor-net = {
-    image = "calcom/cal.com:latest";
+    image = "ghcr.io/theoryzhenkov/schedule.theor.net/schedule-theor-net:latest";
     containerPort = 3000;
     hostPort = 8103;
     domain = "schedule.theor.net";
-    depends.database = "postgresql";
     secrets = true;
   };
 }
