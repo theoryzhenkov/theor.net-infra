@@ -41,7 +41,7 @@ just nixos deploy
 ```
 
 !!! note
-You also need a DNS record pointing `my-app.theor.net` to the server's IP. Add a `porkbun_dns_record` resource in `terraform/main.tf` and run `just terraform apply`.
+    You also need a DNS record pointing `my-app.theor.net` to the server's IP. Add a `porkbun_dns_record` resource in `terraform/main.tf` and run `just terraform apply`.
 
 ### App with PostgreSQL
 
@@ -110,7 +110,7 @@ This:
 - Adds a split DNS rule so `*.theor.net` queries route through the Tailscale DNS proxy
 
 !!! warning
-You still need a public DNS record for the domain (for ACME certificate issuance). Non-Tailscale clients will get a `403 Forbidden` response.
+    You still need a public DNS record for the domain (for ACME certificate issuance). Non-Tailscale clients will get a `403 Forbidden` response.
 
 ## Auto-Update
 
@@ -127,28 +127,17 @@ ssh hetzner-theor.net-web-1 'journalctl -u docker-auto-update --no-pager -n 50'
 ```
 
 !!! info
-Image updates restart containers automatically. Configuration changes (secrets, ports, dependencies) require `just nixos deploy`.
+    Image updates restart containers automatically. Configuration changes (secrets, ports, dependencies) require `just nixos deploy`.
 
 ## Workflow Summary
 
-```
-┌─────────────────────────────┐
-│  1. just nixos app create   │  Scaffold app.yaml
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│  2. Edit app.yaml           │  Set image, domain, ports, deps
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│  3. just nixos app generate │  Update apps.lock.nix
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│  4. just nixos deploy       │  Apply NixOS config to server
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│  5. Auto-update (5 min)     │  Pulls new images, restarts
-└─────────────────────────────┘
+```mermaid
+flowchart TD
+    A["1. just nixos app create\nScaffold app.yaml"]
+    B["2. Edit app.yaml\nSet image, domain, ports, deps"]
+    C["3. just nixos app generate\nUpdate apps.lock.nix"]
+    D["4. just nixos deploy\nApply NixOS config to server"]
+    E["5. Auto-update every 5 min\nPulls new images, restarts"]
+
+    A --> B --> C --> D --> E
 ```

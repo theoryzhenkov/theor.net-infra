@@ -2,28 +2,24 @@
 
 ## High-Level Overview
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    theor.net-infra repo                  │
-│                                                         │
-│  ┌──────────────┐    ┌──────────────────────────────┐   │
-│  │  Terraform    │    │  NixOS                        │   │
-│  │              │    │                              │   │
-│  │  Hetzner     │    │  nginx ─── ACME (TLS)        │   │
-│  │  • Server    │    │  PostgreSQL on volume         │   │
-│  │  • IP        │    │  Authelia (SSO/OIDC)          │   │
-│  │  • Firewall  │    │  Headscale + Tailscale        │   │
-│  │  • Volume    │    │  Docker app containers        │   │
-│  │              │    │                              │   │
-│  │  Porkbun DNS │    │  deploy-rs (remote deploy)    │   │
-│  │  Backblaze B2│    │  sops-nix (secrets)           │   │
-│  └──────────────┘    └──────────────────────────────┘   │
-│                                                         │
-│                    ▼ deploys to ▼                        │
-│                                                         │
-│           Hetzner Cloud  ·  nbg1  ·  cx33               │
-│           hetzner-theor-net-web-1                        │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph repo["theor.net-infra repo"]
+        subgraph tf["Terraform"]
+            hcloud["Hetzner\n• Server · IP · Firewall · Volume"]
+            dns["Porkbun DNS"]
+            b2["Backblaze B2"]
+        end
+        subgraph nixos["NixOS"]
+            nginx_acme["nginx + ACME (TLS)"]
+            pg["PostgreSQL on volume"]
+            authelia["Authelia (SSO/OIDC)"]
+            headscale["Headscale + Tailscale"]
+            docker["Docker app containers"]
+            tools["deploy-rs · sops-nix"]
+        end
+    end
+    repo -->|deploys to| server["Hetzner Cloud · nbg1 · cx33\nhetzner-theor-net-web-1"]
 ```
 
 ## Terraform Layer
@@ -166,24 +162,29 @@ Both the `pg-set-passwords` service and each app's start script use the same der
 
 ### Public Access
 
-```
-Internet → Hetzner Firewall (22/80/443/3478)
-         → nginx (TLS termination via ACME)
-         → 127.0.0.1:<hostPort> (Docker container)
+```mermaid
+graph LR
+    Internet --> fw["Hetzner Firewall\n22 / 80 / 443 / 3478"]
+    fw --> nginx["nginx\n(TLS termination via ACME)"]
+    nginx --> container["127.0.0.1:&lt;hostPort&gt;\n(Docker container)"]
 ```
 
 All public apps get automatic HTTPS via Let's Encrypt HTTP-01 challenges. nginx handles reverse proxying with WebSocket support, gzip compression, and HSTS headers.
 
 ### Tailscale Mesh
 
-```
-Headscale (control plane, headscale.theor.net)
-  ├── DERP relay (built-in, port 3478/udp STUN)
-  ├── OIDC auth via Authelia (auth.theor.net)
-  └── DNS: *.ts.theor.net (MagicDNS)
+```mermaid
+graph TD
+    headscale["Headscale\n(headscale.theor.net)"]
+    derp["DERP relay\nport 3478/udp STUN"]
+    oidc["Authelia OIDC\n(auth.theor.net)"]
+    magic["MagicDNS\n*.ts.theor.net"]
+    setup["headscale-setup service\ncreates user · pre-auth key · tailscale up"]
 
-Server joins mesh automatically via headscale-setup service
-  → creates user, generates pre-auth key, runs tailscale up
+    headscale --> derp
+    headscale --> oidc
+    headscale --> magic
+    setup -->|joins mesh| headscale
 ```
 
 **Tailscale-only apps**: nginx still serves them on the public IP (for ACME), but restricts access to Tailscale IPs (`100.64.0.0/10`). Headscale's DNS `extra_records` override the domain to resolve to the server's Tailscale IP (`100.64.0.2`) for mesh peers, and a `split` DNS rule routes `*.theor.net` queries through the Tailscale DNS proxy.

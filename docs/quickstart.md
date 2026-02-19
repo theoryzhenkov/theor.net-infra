@@ -119,7 +119,7 @@ headscale_oidc_client_secret: "generate-a-random-string"
 ```
 
 !!! tip
-Generate random secrets with: `openssl rand -hex 32`
+    Generate random secrets with: `openssl rand -hex 32`
 
 ## 6. Initial Provisioning
 
